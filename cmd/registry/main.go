@@ -58,6 +58,7 @@ func main() {
 		kind := r.PathValue("kind")
 
 		mu.RLock()
+		defer mu.RUnlock()
 		var servicesToReturn []models.Service
 		for _, serv := range registry {
 			if serv.Kind == kind {

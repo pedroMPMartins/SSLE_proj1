@@ -1,0 +1,7 @@
+FROM alpine:3.20
+
+ARG SERVICE
+WORKDIR /app
+COPY bin/${SERVICE} /usr/local/bin/service
+
+ENTRYPOINT ["/usr/local/bin/service"]
