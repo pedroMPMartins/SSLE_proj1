@@ -23,37 +23,25 @@ Inspect a profile:
 incus profile show <profile_name>
 ```
 
-Get node token from the actual container:
+### Incus Deployment & Teardown
+
+Deploy the full microservice pipeline into isolated Incus containers:
 ```bash
-# Must be run inside the container
-cat /var/lib/rancher/k3s/server/node-token
+./deploy_incus.sh
 ```
 
-## Configure VM stuff
-
-### Applying kernel settings
-(These settings reset whenever the VM reboots)
-Run:
+Inspect running containers and IP addresses:
 ```bash
-# Kernel settings
-sudo sysctl -w vm.overcommit_memory=1
-sudo sysctl -w kernel.panic=10
-sudo sysctl -w kernel.panic_on_oops=1
-
-# Make /proc/sys read-write inside the containers:
-incus exec k3s-master -- mount -o remount,rw /proc/sys
-incus exec k3s-node1 -- mount -o remount,rw /proc/sys
-##Restart K3s on both nodes:
-incus exec k3s-master -- systemctl restart k3s
-incus exec k3s-node1 -- systemctl restart k3s-agent
+incus list
 ```
 
-### Make /proc/sys read-write inside the containers:
-  incus exec k3s-master -- mount -o remount,rw /proc/sys
-  incus exec k3s-node1 -- mount -o remount,rw /proc/sys
-#### 3. Restart K3s on both nodes:
-  incus exec k3s-master -- systemctl restart k3s
-  incus exec k3s-node1 -- systemctl restart k3s-agent
+Teardown and purge containers and shared volumes:
+```bash
+./cleanup_incus.sh
+```
+
+*(Note: Legacy experimental K3s manifests and Docker build scripts have been archived in [`archive/k8s_legacy/`](archive/k8s_legacy/)).*
+
 
 
 
