@@ -1,0 +1,38 @@
+# Prometheus Configuration for SSLE Practical Guide 3
+global:
+  scrape_interval: 5s       # Scrape frequently for rapid detection during lab demos
+  evaluation_interval: 5s
+
+scrape_configs:
+  # 1. Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # 2. SSLE Service Health Exporter (Guide 3 - Section 4: Problem Detection)
+  - job_name: 'service_health_exporter'
+    metrics_path: '/metrics'
+    scrape_interval: 3s
+    static_configs:
+      # If running exporter on host / VM, replace with VM IP or host.incus:8000
+      - targets: ['127.0.0.1:8000', '10.0.2.2:8000', 'ssle-registry.incus:8000']
+        labels:
+          environment: 'ssle-lab'
+          tier: 'soa-liveness'
+
+  # 3. SSLE Diagnostics Exporter (Guide 3 - Section 5: Problem Diagnosis)
+  - job_name: 'service_diagnostics_exporter'
+    metrics_path: '/metrics'
+    scrape_interval: 5s
+    static_configs:
+      - targets: ['127.0.0.1:8001', '10.0.2.2:8001']
+        labels:
+          environment: 'ssle-lab'
+          tier: 'soa-diagnostics'
+
+  # 4. Optional Prometheus Pushgateway (Guide 3 - Section 4 Challenge)
+  - job_name: 'pushgateway'
+    honor_labels: true
+    scrape_interval: 5s
+    static_configs:
+      - targets: ['127.0.0.1:9091', 'localhost:9091']

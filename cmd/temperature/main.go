@@ -10,6 +10,7 @@ import (
 	"os"
 	"simple_soa/internal/function"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -18,6 +19,12 @@ var (
 	deviceKind  = "temperature"
 	registryURL = os.Getenv("REGISTRY_URL")
 	ingestURL   = os.Getenv("INGEST_URL")
+	port        = os.Getenv("PORT")
+	serviceURL  = os.Getenv("SERVICE_URL")
+
+	stateMu     sync.RWMutex
+	lastTemp    float64
+	readingsSent uint64
 )
 
 func sendTemp() {
@@ -57,6 +64,10 @@ func sendTemp() {
 			log.Printf("Error sending data to %s: %v\n", endpoint, err)
 		} else {
 			resp.Body.Close()
+			stateMu.Lock()
+			lastTemp = temp
+			readingsSent++
+			stateMu.Unlock()
 			log.Printf("Successfully sent reading to %s: %+v (status %d)\n", endpoint, payload, resp.StatusCode)
 		}
 
@@ -65,6 +76,12 @@ func sendTemp() {
 }
 
 func main() {
+	if port == "" {
+		port = "5000"
+	}
+	if serviceURL == "" {
+		serviceURL = "http://localhost:" + port
+	}
 	if registryURL == "" {
 		registryURL = "http://localhost:5050"
 	}
@@ -75,8 +92,37 @@ func main() {
 	}
 
 	// Register sensor with the registry in background retry loop
-	go function.RegisterWithRetry(deviceID, deviceKind, "", regEndpoint)
+	go function.RegisterWithRetry(deviceID, deviceKind, serviceURL, regEndpoint)
 
-	log.Printf("Temperature sensor started (ID: %s). Target registry: %s\n", deviceID, registryURL)
-	sendTemp()
+	mux := http.NewServeMux()
+
+	// GET /health
+	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
+		function.RespondJSON(w, http.StatusOK, map[string]any{
+			"status":    "UP",
+			"service":   deviceKind,
+			"device_id": deviceID,
+		})
+	})
+
+	// GET /status
+	mux.HandleFunc("GET /status", func(w http.ResponseWriter, r *http.Request) {
+		stateMu.RLock()
+		defer stateMu.RUnlock()
+		function.RespondJSON(w, http.StatusOK, map[string]any{
+			"status":        "UP",
+			"service":       deviceKind,
+			"device_id":     deviceID,
+			"last_temp":     lastTemp,
+			"readings_sent": readingsSent,
+		})
+	})
+
+	// Start background sensor loop
+	go sendTemp()
+
+	log.Printf("Temperature sensor started (ID: %s) on :%s. Target registry: %s\n", deviceID, port, registryURL)
+	if err := http.ListenAndServe(":"+port, mux); err != nil {
+		log.Fatalf("Temperature server error: %v", err)
+	}
 }

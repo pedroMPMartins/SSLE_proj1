@@ -72,6 +72,22 @@ func main() {
 
 	mux := http.NewServeMux()
 
+	// GET /health
+	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
+		if err := db.Ping(); err != nil {
+			function.RespondJSON(w, http.StatusServiceUnavailable, map[string]string{
+				"status":  "DOWN",
+				"service": serviceKind,
+				"error":   err.Error(),
+			})
+			return
+		}
+		function.RespondJSON(w, http.StatusOK, map[string]string{
+			"status":  "UP",
+			"service": serviceKind,
+		})
+	})
+
 	// GET /average
 	mux.HandleFunc("GET /average", func(w http.ResponseWriter, r *http.Request) {
 		var avg sql.NullFloat64
