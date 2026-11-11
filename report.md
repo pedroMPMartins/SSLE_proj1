@@ -70,23 +70,35 @@ The following components currently exist in `incremental_system` but represent e
 
 ---
 
-### Gap 2: Guide 4 — SIEM (Wazuh) Integration & Active Response
+### Gap 2: Guide 4 — SIEM (Wazuh) Integration & Active Response — **STATUS: COMPLETED [x]**
 * **What Guidelines & Guide 4 Mandate:**
   * Wazuh server deployment in Incus (`images:ubuntu/22.04 wazuh-container`).
   * Wazuh agents installed on target/victim nodes (`apache-container` or SOA nodes).
   * Real-time log collection into Wazuh via `/var/ossec/etc/ossec.conf` (`<localfile>`).
   * Threat detection: **Shellshock (CVE-2014-6271)** or malicious HTTP injection patterns (`User-Agent: () { :; }; ...`).
   * **Wazuh Active Response (`<active-response>`):** Automated firewall blocking (`firewall-drop`) for 60 seconds triggered by custom rule (`100100`) backed by the AlienVault reputation CDB list.
-* **Current State:**
-  * `README.md` only contains hardcoded credentials for a manual Wazuh test container.
-  * Zero automated scripts to deploy, configure, or integrate Wazuh into `incremental_system`.
-  * No structured log forwarding from Go microservices or reverse proxy into Wazuh.
-  * No custom Wazuh decoders, rules, or active response configuration files stored in git.
-* **What is Needed:**
-  1. `monitoring/deploy_wazuh.sh`: Automated deployment of the Wazuh manager container in Incus.
-  2. Integration of Wazuh Agent into the SOA environment (either by monitoring Apache/Nginx reverse proxy access logs, or having Go services write structured access logs to `/var/log/ssle/access.log`).
-  3. Custom Wazuh XML rules and active-response configuration files version-controlled in `monitoring/wazuh/`.
-  4. Integration of AlienVault reputation IP list CDB generator (`iplist-to-cdblist.py`).
+* **Implemented Solution:**
+  * **Automated Wazuh Incus Deployment (`monitoring/wazuh/deploy_wazuh.sh` & `cleanup_wazuh.sh`):**
+    Provisions `wazuh-container` (Ubuntu 22.04) with resource constraints (`limits.cpu=2`, `limits.memory=2GiB`), installs Wazuh Manager, copies custom rules, decoders, AlienVault reputation CDB list, configures Active Response, and compiles CDB lists via `wazuh-makelists`.
+  * **Automated Agent Provisioning (`monitoring/wazuh/install_agent.sh`):**
+    Installs `wazuh-agent` on `ssle-ingestion`, points to Manager IP, and configures `<localfile>` log scraping on `/var/log/ssle/ingestion_access.log`.
+  * **Structured Access Logging Middleware (`cmd/ingestion/main.go`):**
+    Implements Apache Combined Log Format outputting to `/var/log/ssle/ingestion_access.log` (with graceful fallback). Captures client IP, HTTP method, URI, protocol, status code, bytes sent, and User-Agent.
+  * **Application-Level Shellshock Sanitization & Defense:**
+    Detects Shellshock function declaration signatures (`() {`) in request headers and drops malicious payloads with `HTTP 403 Forbidden`, while preserving the log signature for SIEM correlation.
+  * **Custom Wazuh Rules & Decoders (`monitoring/wazuh/rules/` & `decoders/`):**
+    * **Rule 100100 (Level 12):** Shellshock (CVE-2014-6271) command injection detection via PCRE regex `\(\)\s*\{\s*:;\s*\};`.
+    * **Rule 100101 (Level 10):** Threat intelligence detection matching `srcip` against AlienVault IP reputation CDB list (`etc/lists/alienvault_reputation`).
+    * **Rule 100102 (Level 8):** Volumetric HTTP flood detection.
+    * **Rule 100103 (Level 9):** Unauthorized registry deletion attempt alerts.
+  * **Active Response (`firewall-drop`):**
+    Configured in `monitoring/wazuh/ossec.conf` to trigger `/var/ossec/active-response/bin/firewall-drop` for 60 seconds against attacker source IPs triggering rules 100100 or 100101.
+  * **Adversary Tooling Update (`cmd/attacker/main.go`):**
+    Added `-mode shellshock` and `-mode malicious_ip` flags to simulate real-world attacks.
+  * **Comprehensive Documentation & FCAPS Workflow (`docs/guide4_siem_wazuh.md`):**
+    Complete guide mapping detection, diagnosis, correlation, remediation, and post-mortem.
+  * **Automated Test Validation (`test_runner.sh` & `tests/`):**
+    Added unit test `TestWazuhSIEMLoggingAndShellshockDefense` and automated pipeline steps 6.5 & 6.6 verifying exploit rejection, log formatting, and CDB parsing.
 
 ---
 
@@ -196,10 +208,10 @@ To integrate seamlessly with Wazuh, Incus multi-container networking, and hierar
 | Microservice | Location | Required Adjustment |
 | :--- | :--- | :--- |
 | **Registry** | `cmd/registry/main.go` | **[DONE]** Updated `models.Service` with location hierarchy fields (`Region`, `Zone`, `PhysicalHost`, `LogicalEnv`, `FQSN`). Added query filtering and rapid incident localization (`GET /services/locate/{id}`). |
-| **Ingestion** | `cmd/ingestion/main.go` | • Output structured JSON or Syslog access logs to a file (e.g. `/var/log/ssle/ingestion_access.log`) so that `wazuh-agent` can tail and analyze client requests.<br>• Log client IP, method, status code, response time, and user-agent. |
+| **Ingestion** | `cmd/ingestion/main.go` | **[DONE]** Output structured Apache Combined access logs to `/var/log/ssle/ingestion_access.log` for Wazuh agent scraping. Added application-level Shellshock detection and blocking. |
 | **Temperature** | `cmd/temperature/main.go` | • Support registering with hierarchical name tags (e.g. `region="pt-north", zone="lab-01"`). |
-| **Attacker** | `cmd/attacker/main.go` | • Add a flag `-mode shellshock` to generate Guide 4 attack headers (`User-Agent: () { :; }; ...`).<br>• Add coordination support for paired botnet runs (compatible with Guide 5 ApacheBench benchmarks). |
-| **Deploy Scripts** | `deploy_incus.sh` | • Configure logging directories on Incus containers mapped to host or local volumes for Wazuh agent scraping. |
+| **Attacker** | `cmd/attacker/main.go` | **[DONE]** Added `-mode shellshock` for CVE-2014-6271 exploit testing and `-mode malicious_ip` for AlienVault CDB reputation testing. |
+| **Deploy Scripts** | `deploy_incus.sh` | **[DONE]** Configured `/var/log/ssle` log directories and environment variables for Wazuh agent access on Incus containers. |
 
 ---
 
@@ -212,15 +224,15 @@ To integrate seamlessly with Wazuh, Incus multi-container networking, and hierar
 ### Phase 1: Hierarchical Naming & Structured Logging
 1. **[DONE]** Update `internal/models/service.go` with location hierarchy attributes and canonical FQSN.
 2. **[DONE]** Update `cmd/registry` to index services hierarchically, enable zone/region querying, and add rapid incident localization.
-3. Add structured access logging (JSON/syslog format) in `cmd/ingestion` and `cmd/registry` to enable Wazuh agent ingestion.
+3. **[DONE]** Add structured access logging (Apache Combined format) in `cmd/ingestion` and `cmd/registry` to enable Wazuh agent ingestion.
 
-### Phase 2: Wazuh SIEM Deployment & Threat 1 (Guide 4)
-1. Write `monitoring/wazuh/deploy_wazuh.sh` to spin up `wazuh-container` (manager + dashboard) in Incus.
-2. Install and configure `wazuh-agent` on the ingestion/gateway container.
-3. Configure Wazuh `<localfile>` log reading for the access logs.
-4. Add Wazuh custom rule `100100` and AlienVault reputation CDB list.
-5. Configure Wazuh `<active-response>` for `firewall-drop` (60s ban).
-6. Verify with Shellshock probe from `cmd/attacker`.
+### Phase 2: Wazuh SIEM Deployment & Threat 1 (Guide 4) — **[COMPLETED]**
+1. **[DONE]** Write `monitoring/wazuh/deploy_wazuh.sh` to spin up `wazuh-container` (manager + dashboard) in Incus.
+2. **[DONE]** Install and configure `wazuh-agent` on the ingestion/gateway container (`monitoring/wazuh/install_agent.sh`).
+3. **[DONE]** Configure Wazuh `<localfile>` log reading for the access logs (`monitoring/wazuh/ossec.conf`).
+4. **[DONE]** Add Wazuh custom rule `100100` and AlienVault reputation CDB list (`monitoring/wazuh/rules/local_rules.xml` & `lists/`).
+5. **[DONE]** Configure Wazuh `<active-response>` for `firewall-drop` (60s ban).
+6. **[DONE]** Verify with Shellshock probe from `cmd/attacker` and automated CI tests in `test_runner.sh`.
 
 ### Phase 3: DDoS & Target Hardening — Threat 2 (Guide 5)
 1. Write `scripts/deploy_ddos_clients.sh` to launch `load-client-a` and `load-client-b` containers in Incus.

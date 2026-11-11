@@ -1,0 +1,16 @@
+<!--
+  SSLE Project 1: Wazuh Custom Log Decoders (Practical Guide 4)
+  Location on Wazuh Manager: /var/ossec/etc/decoders/local_decoder.xml
+-->
+
+<!-- Decoder for SSLE SOA Apache-Compatible Combined Access Logs -->
+<decoder name="ssle-accesslog">
+  <type>web-log</type>
+  <prematch>^\S+ - - \[\S+ \S+\] "\S+ </prematch>
+</decoder>
+
+<decoder name="ssle-accesslog-fields">
+  <parent>ssle-accesslog</parent>
+  <regex>^(\S+) - - \[(\S+) \S+\] "(\S+) (\S+) (\S+)" (\d+) (\d+) "(\S*)" "(.*)"</regex>
+  <order>srcip, date, action, url, protocol, id, bytes, referer, user_agent</order>
+</decoder>

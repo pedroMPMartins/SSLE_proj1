@@ -1,0 +1,8 @@
+# AlienVault IP Reputation Sample List for SSLE Lab (Guide 4)
+# Format: <ip_address>:<reputation_category_or_score>
+198.51.100.25:malicious_botnet
+203.0.113.195:scanning_probe
+192.0.2.66:command_and_control
+10.0.0.99:lab_malicious_simulator
+185.220.101.5:tor_exit_node
+45.33.32.156:shellshock_exploit_scanner

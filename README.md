@@ -121,10 +121,45 @@ An extensive, fully automated test runner complying with non-disruptive isolatio
    - Color-coded prefixes: `[INFO]`, `[SUCCESS]`, `[WARNING]`, `[ERROR]`.
 
 
-## Wazuh
+## Guide 4: SIEM Integration (Wazuh), Threat Detection & Active Response
 
-Wazuh credentials inside the wazuh-container:
+Comprehensive documentation, rule analysis, and FCAPS mapping are available in [`docs/guide4_siem_wazuh.md`](docs/guide4_siem_wazuh.md).
+
+### 1. Deploy Wazuh SIEM Manager (Incus)
+```bash
+./monitoring/wazuh/deploy_wazuh.sh
+```
+
+Wazuh credentials inside `wazuh-container`:
 ```
 User: admin
 Password: AFH*ngfeY91F2EO1vlA2Exf0*iVk.V6?
 ```
+
+### 2. Deploy Wazuh Agent to Ingestion Service
+```bash
+# Retrieve Wazuh Manager IP
+WAZUH_IP=$(incus list wazuh-container --format csv -c 4 | awk '{print $1}')
+
+# Install and configure agent on ssle-ingestion
+./monitoring/wazuh/install_agent.sh "$WAZUH_IP" ssle-ingestion
+```
+
+### 3. Simulate Attacks (Guide 4)
+```bash
+# Shellshock Command Injection (CVE-2014-6271 - Rule 100100)
+./bin/attacker -target http://localhost:5001 -mode shellshock -concurrency 1 -duration 5
+
+# AlienVault Blacklisted IP Traffic (Rule 100101)
+./bin/attacker -target http://localhost:5001 -mode malicious_ip -concurrency 1 -duration 5
+```
+
+### 4. Verify Active Response (Firewall Drop)
+```bash
+# Inspect automated firewall-drop triggers inside ssle-ingestion
+incus exec ssle-ingestion -- cat /var/ossec/logs/active-responses.log
+
+# Inspect active iptables DROP rules
+incus exec ssle-ingestion -- iptables -L -n -v
+```
+

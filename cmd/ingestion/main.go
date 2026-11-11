@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"simple_soa/internal/function"
 	"strconv"
 	"strings"
@@ -25,22 +26,34 @@ var (
 	serviceURL  = os.Getenv("SERVICE_URL")
 
 	// --- Defensive Controls (Guide 3 Remediation) ---
-	enableRateLimit       = parseBoolEnv("ENABLE_RATE_LIMIT", false)
-	enableInputValidation = parseBoolEnv("ENABLE_INPUT_VALIDATION", false)
-	blockedDevicesList    = os.Getenv("BLOCKED_DEVICES")
-	minTempAllowed        = parseFloatEnv("MIN_TEMP", -50.0)
-	maxTempAllowed        = parseFloatEnv("MAX_TEMP", 100.0)
-	rateLimitRPS          = parseFloatEnv("RATE_LIMIT_RPS", 20.0)
+	enableRateLimit          = parseBoolEnv("ENABLE_RATE_LIMIT", false)
+	enableInputValidation    = parseBoolEnv("ENABLE_INPUT_VALIDATION", false)
+	enableShellshockDefense  = parseBoolEnv("ENABLE_SHELLSHOCK_DEFENSE", true) // Default defense-in-depth enabled
+	blockedDevicesList       = os.Getenv("BLOCKED_DEVICES")
+	minTempAllowed           = parseFloatEnv("MIN_TEMP", -50.0)
+	maxTempAllowed           = parseFloatEnv("MAX_TEMP", 100.0)
+	rateLimitRPS             = parseFloatEnv("RATE_LIMIT_RPS", 20.0)
 
 	// Rate limiter state: token bucket per IP
 	rateLimiterMu sync.Mutex
 	clientsBucket = make(map[string]*tokenBucket)
+
+	// Access logging for Wazuh SIEM integration (Guide 4)
+	accessLogPath = getEnv("ACCESS_LOG_PATH", "/var/log/ssle/ingestion_access.log")
+	accessLogFile *os.File
+	accessLogMu   sync.Mutex
 )
+
+func getEnv(key, fallback string) string {
+	if val := os.Getenv(key); val != "" {
+		return val
+	}
+	return fallback
+}
 
 func parseBoolEnv(key string, fallback bool) bool {
 	val := os.Getenv(key)
 	if val == "" {
-		// Also check global ENABLE_DEFENSES
 		if os.Getenv("ENABLE_DEFENSES") == "true" {
 			return true
 		}
@@ -59,6 +72,79 @@ func parseFloatEnv(key string, fallback float64) float64 {
 		return fallback
 	}
 	return f
+}
+
+// initAccessLogger initializes the access log file with automatic directory creation and fallback
+func initAccessLogger() {
+	dir := filepath.Dir(accessLogPath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		// Fallback to local access.log if system directory (/var/log/ssle) is not writable
+		accessLogPath = "./ingestion_access.log"
+	}
+
+	f, err := os.OpenFile(accessLogPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		accessLogPath = "./ingestion_access.log"
+		f, err = os.OpenFile(accessLogPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+		if err != nil {
+			log.Printf("[Wazuh SIEM] Warning: Unable to open access log file: %v. Access logging to file disabled.\n", err)
+			return
+		}
+	}
+	accessLogFile = f
+	log.Printf("[Wazuh SIEM] Structured access logging initialized at: %s\n", accessLogPath)
+}
+
+// logAccess writes standard Apache Combined Log Format entries for Wazuh localfile ingestion
+func logAccess(clientIP string, method, uri, proto string, status, bytesSent int, userAgent string) {
+	if accessLogFile == nil {
+		return
+	}
+
+	// Apache Combined format: %h %l %u %t "%r" %>s %b "%{Referer}i" "%{User-Agent}i"
+	// Example: 192.168.1.100 - - [11/Nov/2026:14:30:00 +0000] "POST /ingest HTTP/1.1" 200 45 "-" "curl/7.68.0"
+	timeStr := time.Now().Format("02/Jan/2006:15:04:05 -0700")
+	line := fmt.Sprintf("%s - - [%s] \"%s %s %s\" %d %d \"-\" \"%s\"\n",
+		clientIP, timeStr, method, uri, proto, status, bytesSent, userAgent)
+
+	accessLogMu.Lock()
+	defer accessLogMu.Unlock()
+	accessLogFile.WriteString(line)
+}
+
+type statusRecorder struct {
+	http.ResponseWriter
+	status    int
+	bytesSent int
+}
+
+func (r *statusRecorder) WriteHeader(status int) {
+	r.status = status
+	r.ResponseWriter.WriteHeader(status)
+}
+
+func (r *statusRecorder) Write(b []byte) (int, error) {
+	if r.status == 0 {
+		r.status = http.StatusOK
+	}
+	n, err := r.ResponseWriter.Write(b)
+	r.bytesSent += n
+	return n, err
+}
+
+func extractClientIP(r *http.Request) string {
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		parts := strings.Split(xff, ",")
+		return strings.TrimSpace(parts[0])
+	}
+	if xri := r.Header.Get("X-Real-IP"); xri != "" {
+		return strings.TrimSpace(xri)
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
 }
 
 type tokenBucket struct {
@@ -138,6 +224,11 @@ func main() {
 		registryURL = "http://localhost:5050"
 	}
 
+	initAccessLogger()
+	if accessLogFile != nil {
+		defer accessLogFile.Close()
+	}
+
 	regEndpoint := registryURL
 	if !strings.HasSuffix(regEndpoint, "/register") {
 		regEndpoint = strings.TrimSuffix(regEndpoint, "/") + "/register"
@@ -155,12 +246,31 @@ func main() {
 			"service":                  serviceKind,
 			"rate_limit_enabled":       enableRateLimit,
 			"input_validation_enabled": enableInputValidation,
+			"shellshock_defense":       enableShellshockDefense,
+			"access_log_path":          accessLogPath,
 			"blocked_devices_count":    len(strings.Split(blockedDevicesList, ",")),
 		})
 	})
 
 	// POST /ingest
 	mux.HandleFunc("POST /ingest", func(w http.ResponseWriter, r *http.Request) {
+		clientIP := extractClientIP(r)
+		userAgent := r.UserAgent()
+
+		// SIEM Threat 1: Shellshock (CVE-2014-6271) Exploit Inspection
+		// Attack pattern typically found in User-Agent, URI, or headers: () { :; };
+		if strings.Contains(userAgent, "() {") || strings.Contains(r.URL.Path, "() {") {
+			log.Printf("[SECURITY ALERT - Wazuh Threat 1] Shellshock (CVE-2014-6271) attack pattern detected from IP %s! User-Agent: %s\n",
+				clientIP, userAgent)
+
+			if enableShellshockDefense {
+				function.RespondJSON(w, http.StatusForbidden, map[string]string{
+					"error": "Malicious payload detected: Shellshock attack blocked by application security filter",
+				})
+				return
+			}
+		}
+
 		// Defense 1: Rate Limiting
 		if enableRateLimit && isRateLimited(r.RemoteAddr) {
 			w.Header().Set("Retry-After", "1")
@@ -246,11 +356,24 @@ func main() {
 		w.Write(respBody)
 	})
 
-	log.Printf("Ingestion service listening on :%s (ID: %s)\n", port, serviceID)
-	log.Printf("  Defenses: RateLimit=%v (RPS=%.1f) | InputValidation=%v (range=[%.1f, %.1f]) | Blocklist=%s\n",
-		enableRateLimit, rateLimitRPS, enableInputValidation, minTempAllowed, maxTempAllowed, blockedDevicesList)
+	// Wrap mux with access logging middleware for Wazuh SIEM
+	loggingHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rec := &statusRecorder{ResponseWriter: w}
+		mux.ServeHTTP(rec, r)
 
-	if err := http.ListenAndServe(":"+port, mux); err != nil {
+		clientIP := extractClientIP(r)
+		status := rec.status
+		if status == 0 {
+			status = http.StatusOK
+		}
+		logAccess(clientIP, r.Method, r.RequestURI, r.Proto, status, rec.bytesSent, r.UserAgent())
+	})
+
+	log.Printf("Ingestion service listening on :%s (ID: %s)\n", port, serviceID)
+	log.Printf("  Defenses: RateLimit=%v (RPS=%.1f) | InputValidation=%v (range=[%.1f, %.1f]) | ShellshockDefense=%v | Blocklist=%s\n",
+		enableRateLimit, rateLimitRPS, enableInputValidation, minTempAllowed, maxTempAllowed, enableShellshockDefense, blockedDevicesList)
+
+	if err := http.ListenAndServe(":"+port, loggingHandler); err != nil {
 		log.Fatalf("Server failed: %v", err)
 	}
 }

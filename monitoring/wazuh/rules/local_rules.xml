@@ -1,0 +1,53 @@
+<!--
+  SSLE Project 1: Wazuh Custom Detection Rules (Practical Guide 4)
+  Location on Wazuh Manager: /var/ossec/etc/rules/local_rules.xml
+-->
+<group name="ssle,web,appsec,attack">
+
+  <!-- Rule 100100: Shellshock (CVE-2014-6271) Exploit Detection -->
+  <rule id="100100" level="12">
+    <if_group>web|access_log</if_group>
+    <match>() { :; };|() { :;};</match>
+    <regex type="pcre2">\(\)\s*\{\s*:;\s*\};</regex>
+    <description>SSLE SIEM Alert: Shellshock (CVE-2014-6271) command injection attempt detected</description>
+    <mitre>
+      <id>T1059</id>
+      <id>T1190</id>
+    </mitre>
+    <info type="cve">CVE-2014-6271</info>
+  </rule>
+
+  <!-- Rule 100101: AlienVault Malicious IP Reputation Match -->
+  <rule id="100101" level="10">
+    <if_group>web|access_log</if_group>
+    <list field="srcip" lookup="address_match_key">etc/lists/alienvault_reputation</list>
+    <description>SSLE SIEM Alert: HTTP request from blacklisted IP in AlienVault Reputation List</description>
+    <mitre>
+      <id>T1071</id>
+      <id>T1590</id>
+    </mitre>
+    <group>reputation,threat_intel</group>
+  </rule>
+
+  <!-- Rule 100102: High-Rate HTTP Flood / DoS Alert -->
+  <rule id="100102" level="8" frequency="25" timeframe="5">
+    <if_matched_sid>100001</if_matched_sid>
+    <same_source_ip />
+    <description>SSLE SIEM Alert: High-rate HTTP request flood detected from same IP</description>
+    <mitre>
+      <id>T1498</id>
+    </mitre>
+  </rule>
+
+  <!-- Rule 100103: Unauthorized Service Registry Tampering (403 Forbidden) -->
+  <rule id="100103" level="9">
+    <if_group>web|access_log</if_group>
+    <match>DELETE /register/</match>
+    <id>403</id>
+    <description>SSLE SIEM Alert: Unauthorized rogue service deregistration attempt blocked</description>
+    <mitre>
+      <id>T1565</id>
+    </mitre>
+  </rule>
+
+</group>

@@ -85,6 +85,7 @@ systemctl enable --now ssle-storage
 '
 
 # --- Ingestion Service ---
+incus exec ssle-ingestion -- mkdir -p /var/log/ssle
 incus exec ssle-ingestion -- bash -c 'cat <<EOF > /etc/systemd/system/ssle-ingestion.service
 [Unit]
 Description=SSLE Ingestion Service
@@ -95,6 +96,7 @@ Type=simple
 Environment="PORT=5001"
 Environment="SERVICE_URL=http://ssle-ingestion.incus:5001"
 Environment="REGISTRY_URL=http://ssle-registry.incus:5050"
+Environment="ACCESS_LOG_PATH=/var/log/ssle/ingestion_access.log"
 ExecStart=/usr/local/bin/ingestion
 Restart=always
 

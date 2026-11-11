@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	_ "modernc.org/sqlite"
 )
@@ -351,3 +352,91 @@ func TestPrometheusMetricsFormatting(t *testing.T) {
 		t.Errorf("Output missing metric line: %s", output)
 	}
 }
+
+// TestWazuhSIEMLoggingAndShellshockDefense verifies access log formatting and Shellshock exploit prevention
+func TestWazuhSIEMLoggingAndShellshockDefense(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "ssle_wazuh_test_*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	logFilePath := filepath.Join(tmpDir, "ingestion_access.log")
+
+	// Middleware simulation matching cmd/ingestion
+	logFile, err := os.OpenFile(logFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		t.Fatalf("Failed to open test access log: %v", err)
+	}
+	defer logFile.Close()
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /ingest", func(w http.ResponseWriter, r *http.Request) {
+		userAgent := r.UserAgent()
+		// Shellshock defense rule
+		if strings.Contains(userAgent, "() {") {
+			function.RespondJSON(w, http.StatusForbidden, map[string]string{
+				"error": "Malicious payload detected: Shellshock attack blocked",
+			})
+			return
+		}
+		function.RespondJSON(w, http.StatusOK, map[string]string{"status": "accepted"})
+	})
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, r)
+
+		for k, v := range rec.Header() {
+			w.Header()[k] = v
+		}
+		w.WriteHeader(rec.Code)
+		w.Write(rec.Body.Bytes())
+
+		// Write Apache Combined entry
+		timeStr := time.Now().Format("02/Jan/2006:15:04:05 -0700")
+		line := fmt.Sprintf("%s - - [%s] \"%s %s %s\" %d %d \"-\" \"%s\"\n",
+			r.RemoteAddr, timeStr, r.Method, r.RequestURI, r.Proto, rec.Code, rec.Body.Len(), r.UserAgent())
+		logFile.WriteString(line)
+	})
+
+	ts := httptest.NewServer(handler)
+	defer ts.Close()
+
+	// 1. Normal legitimate request
+	resp, err := http.Post(ts.URL+"/ingest", "application/json", strings.NewReader(`{"device_id":"sensor-1","temperature":20.0}`))
+	if err != nil || resp.StatusCode != http.StatusOK {
+		t.Fatalf("Legitimate request failed: %v (status %d)", err, resp.StatusCode)
+	}
+
+	// 2. Shellshock Exploit Probe (Guide 4)
+	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/ingest", strings.NewReader(`{"device_id":"bad","temperature":20.0}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", "() { :; }; /bin/cat /etc/passwd")
+
+	exploitResp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("Shellshock request failed: %v", err)
+	}
+	if exploitResp.StatusCode != http.StatusForbidden {
+		t.Errorf("Expected HTTP 403 for Shellshock attack, got %d", exploitResp.StatusCode)
+	}
+
+	// 3. Inspect generated log file
+	logBytes, err := os.ReadFile(logFilePath)
+	if err != nil {
+		t.Fatalf("Failed to read access log: %v", err)
+	}
+	logContent := string(logBytes)
+
+	if !strings.Contains(logContent, `POST /ingest HTTP/1.1" 200`) {
+		t.Errorf("Access log missing valid 200 entry: %s", logContent)
+	}
+	if !strings.Contains(logContent, `() { :; }; /bin/cat /etc/passwd`) {
+		t.Errorf("Access log missing Shellshock attack signature for Wazuh: %s", logContent)
+	}
+	if !strings.Contains(logContent, `POST /ingest HTTP/1.1" 403`) {
+		t.Errorf("Access log missing 403 status entry for exploit: %s", logContent)
+	}
+}
+

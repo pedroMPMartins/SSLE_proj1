@@ -250,9 +250,11 @@ PORT="${TEST_INGESTION_PORT}" \
 SERVICE_URL="${TEST_INGESTION_URL}" \
 REGISTRY_URL="${TEST_REGISTRY_URL}" \
 STORAGE_URL="${TEST_STORAGE_URL}" \
+ACCESS_LOG_PATH="${TEST_TMP_DIR}/ingestion_access.log" \
 ENABLE_RATE_LIMIT="true" \
 RATE_LIMIT_RPS="5.0" \
 ENABLE_INPUT_VALIDATION="true" \
+ENABLE_SHELLSHOCK_DEFENSE="true" \
 MIN_TEMP="-50.0" \
 MAX_TEMP="100.0" \
 BLOCKED_DEVICES="${TEST_BLOCKED_DEVICE}" \
@@ -508,6 +510,53 @@ else
     OVERALL_SUCCESS=false
     FAILED_STEPS+=("Defense: Protected Registry Deregistration")
 fi
+
+# 6.5 Wazuh SIEM Threat 1: Shellshock (CVE-2014-6271) Exploit & Access Log Formatting
+log_info "Testing Wazuh SIEM Threat 1: Shellshock Attack Defense & Structured Access Logging..."
+SHELLSHOCK_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+    -X POST "${TEST_INGESTION_URL}/ingest" \
+    -H "Content-Type: application/json" \
+    -H "User-Agent: () { :; }; /bin/cat /etc/passwd" \
+    -d '{"device_id":"bad-exploiter","temperature":21.0}')
+
+if [ "$SHELLSHOCK_STATUS" -eq 403 ]; then
+    log_success "Shellshock Exploit Defense: Malicious command injection probe successfully blocked (HTTP 403)."
+else
+    log_error "Shellshock Exploit Defense failed! Expected HTTP 403, got HTTP $SHELLSHOCK_STATUS"
+    OVERALL_SUCCESS=false
+    FAILED_STEPS+=("Defense: Shellshock Exploit Blocking (403)")
+fi
+
+# Test attacker tool running in shellshock mode
+"${TEST_BIN_DIR}/attacker" -target "${TEST_INGESTION_URL}" -mode shellshock -concurrency 1 -duration 1 > /dev/null 2>&1 || true
+
+# Verify Apache Combined Access Log was written for Wazuh localfile collection
+ACCESS_LOG="${TEST_TMP_DIR}/ingestion_access.log"
+if [ -f "$ACCESS_LOG" ] && grep -q "() { :; };" "$ACCESS_LOG" && grep -q "POST /ingest" "$ACCESS_LOG"; then
+    log_success "Wazuh SIEM Ingestion: Structured Apache Combined access log verified with Shellshock attack signature."
+else
+    log_error "Wazuh access log missing or does not contain expected Shellshock log signature!"
+    OVERALL_SUCCESS=false
+    FAILED_STEPS+=("Wazuh Structured Access Logging")
+fi
+
+# 6.6 Threat Intel: AlienVault IP Reputation CDB Conversion
+log_info "Testing Threat Intel: AlienVault IP Reputation CDB List Generation..."
+CDB_OUT="${TEST_TMP_DIR}/test_alienvault.cdb"
+if python3 monitoring/wazuh/lists/generate_cdb.py monitoring/wazuh/lists/alienvault_reputation "$CDB_OUT" > /dev/null 2>&1; then
+    if [ -f "$CDB_OUT" ] && grep -q "198.51.100.25:malicious_botnet" "$CDB_OUT"; then
+        log_success "AlienVault Reputation: Successfully parsed threat intel list into CDB format."
+    else
+        log_error "AlienVault CDB generation output missing expected IP entries!"
+        OVERALL_SUCCESS=false
+        FAILED_STEPS+=("AlienVault CDB List Generation")
+    fi
+else
+    log_error "Failed to execute AlienVault CDB generation script!"
+    OVERALL_SUCCESS=false
+    FAILED_STEPS+=("AlienVault CDB List Generation")
+fi
+
 
 # ------------------------------------------------------------------------------
 # Step 7: Monitoring & Exporters Validation
