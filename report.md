@@ -1,0 +1,247 @@
+# SSLE Project 1: System Audit, Gap Analysis & Roadmap
+**Document:** Project 1 Preparation Report  
+**Target Project:** Threat Detection, Monitoring, and Prevention (Project 1 — Due Nov 22)  
+**Author:** Antigravity (Pair Programming Assistant)  
+**Date:** November 11, 2026  
+
+---
+
+## 1. Executive Summary
+
+This report analyzes the current state of **`incremental_system`** against:
+1. **The Official Project 1 Guidelines** ([`guidelines_v0.pdf`](file:///home/i/Desktop/Pedro/Universidade/4-1/SSLE/p/guidelines_v0.pdf)).
+2. **Practical Guide 4: SIEM — Wazuh & Shellshock** ([`004.pdf`](file:///home/i/Desktop/Pedro/Universidade/4-1/SSLE/p/004.pdf)).
+3. **Practical Guide 5: DDoS and Man-in-the-Middle (MitM)** ([`005.pdf`](file:///home/i/Desktop/Pedro/Universidade/4-1/SSLE/p/005.pdf)).
+
+### Current Project Baseline
+The current codebase has completed **Guides 1, 2, and 3**:
+* A working 5-service SOA Go microservice pipeline (Registry, Ingestion, Storage, Analytics, Temperature).
+* Full Prometheus monitoring written in Go (`cmd/health_exporter`, `cmd/diagnostics_exporter`, `cmd/pushgateway_publisher`).
+* Attack-Defense Tree documentation and adversary tooling (`cmd/attacker`).
+* Defense countermeasures (Token-bucket rate limiting, input validation bounds, device blocklisting, admin tokens).
+* An isolated, idempotent automated test suite (`test_runner.sh`).
+
+### Core Conclusion
+While the foundational microservice architecture and Prometheus monitoring are solid, the project is missing the core **SIEM integration (Wazuh)**, the **three formalized threat scenarios** required by the syllabus, the **scalable hierarchical naming structure**, and the **FCAPS event correlation workflow**. Additionally, several Kubernetes assets represent unnecessary overhead for this Incus-centric course evaluation.
+
+---
+
+## 2. Inventory of "Over" (Excess / Misaligned Components)
+
+The following components currently exist in `incremental_system` but represent excess or misaligned scope relative to Project 1 evaluation:
+
+| Component | Files | Issue / Why It Is "Over" | Recommendation |
+| :--- | :--- | :--- | :--- |
+| **Kubernetes Deployment Scripts & Manifests** | • `deploy_k8s.sh`<br>• `cleanup_k8s.sh`<br>• `k8s/ssle-k8s.yaml`<br>• `docker/Dockerfile`<br>• `docker/Dockerfile.fast` | • The course syllabus, Project 1 guidelines, and Guides 2–5 exclusively test against **Incus system containers** running on the Kali VM.<br>• Running a local K3s cluster inside Incus nested containers causes severe VM kernel panics and memory overcommit contention (as noted in `README.md`).<br>• The grading demo is evaluated via Incus CLI commands (`incus list`, `incus exec`, `incus config`). | **Retain as reference in `k8s/` or archive**, but exclude from the primary demo and grading pipeline. Do not invest further effort in K8s manifests for Project 1. |
+| **Standalone Pushgateway Publisher** | • `cmd/pushgateway_publisher/main.go` | • Implemented specifically to answer the theoretical challenge in Guide 3.<br>• For long-running services, pushgateway masks liveness failures. | Keep as a demonstration asset for Guide 3 challenge, but do not integrate into the primary production monitoring path. |
+| **Monolithic Local Run Script** | • `run.sh` | • Starts all microservices on localhost in the background without network isolation. | Keep for quick local compilation checks, but rely on `deploy_incus.sh` for the official VM demonstration. |
+
+---
+
+## 3. Gap Analysis: What is Missing for Project 1 & Guides 4–5
+
+### Gap 1: Scalable Hierarchical Naming & Logical/Physical Location (Project Requirement)
+* **What Guidelines Mandate:**
+  * Identification and registration of elements in a scalable way.
+  * Clear distinction of where elements reside in physical terms (host machine) vs. logical terms (container/namespace).
+  * Geographic location and delegation of responsibilities.
+  * Ability to monitor elements by location, optimizing consumed bandwidth (bonus).
+  * Rapid localization of incident sources.
+* **Current State:**
+  * In `internal/models/service.go`, service identity is flat: `ID` (32-char random hex), `Kind` (string), `URL` (string), `Timestamp`.
+  * No hierarchy, no physical host metadata, no logical zone, no region.
+* **What is Needed:**
+  * Refactor the Service model and Registry to support structured, hierarchical naming:
+    ```
+    Format: <region>.<zone>.<host_type>.<instance_id>.<service_kind>
+    Example: eu-west.zone-a.incus-node1.srv-01.ingestion
+    ```
+  * Registry endpoints (`GET /services?region=...&zone=...`) allowing location-aware discovery and delegated routing.
+
+---
+
+### Gap 2: Guide 4 — SIEM (Wazuh) Integration & Active Response
+* **What Guidelines & Guide 4 Mandate:**
+  * Wazuh server deployment in Incus (`images:ubuntu/22.04 wazuh-container`).
+  * Wazuh agents installed on target/victim nodes (`apache-container` or SOA nodes).
+  * Real-time log collection into Wazuh via `/var/ossec/etc/ossec.conf` (`<localfile>`).
+  * Threat detection: **Shellshock (CVE-2014-6271)** or malicious HTTP injection patterns (`User-Agent: () { :; }; ...`).
+  * **Wazuh Active Response (`<active-response>`):** Automated firewall blocking (`firewall-drop`) for 60 seconds triggered by custom rule (`100100`) backed by the AlienVault reputation CDB list.
+* **Current State:**
+  * `README.md` only contains hardcoded credentials for a manual Wazuh test container.
+  * Zero automated scripts to deploy, configure, or integrate Wazuh into `incremental_system`.
+  * No structured log forwarding from Go microservices or reverse proxy into Wazuh.
+  * No custom Wazuh decoders, rules, or active response configuration files stored in git.
+* **What is Needed:**
+  1. `monitoring/deploy_wazuh.sh`: Automated deployment of the Wazuh manager container in Incus.
+  2. Integration of Wazuh Agent into the SOA environment (either by monitoring Apache/Nginx reverse proxy access logs, or having Go services write structured access logs to `/var/log/ssle/access.log`).
+  3. Custom Wazuh XML rules and active-response configuration files version-controlled in `monitoring/wazuh/`.
+  4. Integration of AlienVault reputation IP list CDB generator (`iplist-to-cdblist.py`).
+
+---
+
+### Gap 3: Guide 5 — Distributed Denial of Service (DDoS) & Target Hardening
+* **What Guide 5 Mandates:**
+  * Botnet traffic emulation using two concurrent lab client containers (`load-client-a`, `load-client-b`).
+  * Standardized HTTP workload benchmarking using ApacheBench (`ab -n 40 -c 1` baseline vs. `ab -n 40 -c 2` concurrent).
+  * System resource constraints applied at container level via Incus:
+    ```bash
+    incus config set <target> limits.cpu=1
+    incus config set <target> limits.memory=256MiB
+    ```
+  * Correlating performance metrics under resource starvation: throughput (req/s), median latency, 95th-percentile (p95) latency, failed requests, and container CPU/memory exhaustion.
+  * Demonstrating mitigation controls: rate limiting, upstream filtering, worker concurrency tuning.
+* **Current State:**
+  * We have `cmd/attacker` capable of high-rate HTTP flooding and in-memory rate limiting in `cmd/ingestion`.
+  * We do **not** have the Incus-based multi-container botnet harness (`load-client-a/b`), the automated `ab` test runner, or scripts applying Incus hardware limits.
+* **What is Needed:**
+  1. Script `scripts/deploy_ddos_clients.sh` to launch and configure `load-client-a` and `load-client-b`.
+  2. Automated benchmark runner collecting the worksheet fields required by Guide 5 (req/s, median ms, p95 ms, errors, CPU/mem).
+  3. Incus container resource limiting script (`scripts/set_target_limits.sh`).
+
+---
+
+### Gap 4: Guide 5 — Route & Signals Hijacking / Man-in-the-Middle (MitM)
+* **What Guide 5 & Syllabus Mandate:**
+  * Isolated network topology: Client and Target placed on separate private subnets with traffic forced through an Interceptor.
+  * Interceptor configured with Linux IP forwarding (`net.ipv4.ip_forward=1`) and disabled ICMP redirects.
+  * Transparent TCP redirection via `iptables` NAT PREROUTING:
+    ```bash
+    iptables -t nat -A PREROUTING -i "$CLIENT_IF" -s "$CLIENT_IP"/32 -d "$TARGET_IP"/32 -p tcp --dport 80 -j REDIRECT --to-ports 8080
+    ```
+  * Transparent proxying using `mitmproxy --mode transparent --listen-port 8080`.
+  * Traffic interception verification: client sends requests without explicit proxy configuration (`curl --noproxy "*"`), interceptor inspects and logs payloads.
+  * Optional HTTPS extension: showing TLS certificate validation failure on untrusted proxy vs. custom lab CA installation.
+* **Current State:**
+  * Completely unaddressed in `incremental_system`.
+* **What is Needed:**
+  1. An Incus network provisioning script creating dual isolated bridges (e.g. `ssle-net-client`, `ssle-net-server`) and routing container `ssle-interceptor`.
+  2. Automated script to configure `iptables` redirection rules and start `mitmproxy`.
+  3. Verification tests demonstrating transparent interception of sensor telemetry or API requests.
+  4. Cryptographic mitigation (e.g., mTLS between microservices, HMAC payload signing) demonstrating how the SOA prevents eavesdropping or tampering even when a network interceptor is active.
+
+---
+
+### Gap 5: The "Three Threats" Selection for Project 1
+Project 1 requires students to address **three threats** from the syllabus. Based on Guides 3, 4, and 5, the most coherent and fully supported triad is:
+
+```mermaid
+flowchart TD
+    subgraph Three Required Threats
+        T1["Threat 1: Web Exploitation & Command Injection (Guide 4 - Shellshock)"]
+        T2["Threat 2: Distributed Denial of Service - DDoS / Botnet (Guide 5 & Guide 3)"]
+        T3["Threat 3: Route & Signals Hijacking - MitM Interception (Guide 5)"]
+    end
+
+    subgraph Dual Observability Architecture
+        PROM["Prometheus Monitoring<br>(Metric anomalies, throughput, latency, CPU/RAM)"]
+        WAZUH["Wazuh SIEM<br>(Log analysis, rule matching, Active Response)"]
+    end
+
+    subgraph Defense & Active Response
+        D1["Wazuh Active Response<br>(firewall-drop, AlienVault reputation CDB)"]
+        D2["Ingress Rate Limiting & Resource Quotas<br>(Token bucket, Incus CPU/RAM limits)"]
+        D3["End-to-End Cryptography<br>(mTLS, Token Auth, HMAC integrity)"]
+    end
+
+    T1 --> WAZUH --> D1
+    T2 --> PROM --> D2
+    T2 --> WAZUH
+    T3 --> PROM
+    T3 --> D3
+```
+
+1. **Threat 1: Web Exploitation & Injection (Shellshock / Malicious Payloads — Guide 4)**
+   * *Target:* Exposed HTTP gateway or Apache proxy.
+   * *Detection:* Wazuh agent log parsing (`localfile`) + Rule `100100`.
+   * *Mitigation:* Wazuh Active Response (`firewall-drop` for 60s) + AlienVault reputation database.
+2. **Threat 2: Volumetric Denial-of-Service / Botnet (DDoS — Guide 5 & 3)**
+   * *Target:* Ingestion Service (`POST /ingest`).
+   * *Detection:* Prometheus request rate surges (`service_requests_per_second`), latency percentiles (`service_response_time_seconds`), and Incus CPU starvation.
+   * *Mitigation:* Token-bucket rate limiting (`HTTP 429`), payload size capping, container resource isolation.
+3. **Threat 3: Route & Signals Hijacking (Transparent MitM Interception — Guide 5)**
+   * *Target:* Inter-service telemetry transmission.
+   * *Detection:* Network anomaly detection, TLS validation mismatch, unauthenticated registry unregistration.
+   * *Mitigation:* Mutual TLS (mTLS) / pre-shared authentication tokens (`X-Admin-Token`), preventing plain-text eavesdropping or tampering.
+
+---
+
+### Gap 6: Fault Management Workflow (FCAPS) & Event Correlation
+* **What Guidelines Mandate:**
+  * Must follow the 5-stage FCAPS cycle:
+    1. **Detecting:** Immediate observation of an anomaly.
+    2. **Diagnosing & Isolating:** Narrowing down affected service and host container.
+    3. **Correlating:** Connecting metric symptoms (Prometheus CPU/latency spike) with log/security causes (Wazuh attack alerts).
+    4. **Resolution / Mitigation:** Automated (Wazuh active-response firewall drop) and application-level (rate-limiting 429).
+    5. **Post-Mortem:** Analysis of logs, attack traces, and recovery verification.
+* **Current State:**
+  * Prometheus and defensive code handle *detection* and *remediation*, but correlation between metric alarms and security events is currently manual and undocumented.
+
+---
+
+## 4. Required Adjustments to Existing Microservices
+
+To integrate seamlessly with Wazuh, Incus multi-container networking, and hierarchical naming, the following adjustments to the Go services will be needed:
+
+| Microservice | Location | Required Adjustment |
+| :--- | :--- | :--- |
+| **Registry** | `cmd/registry/main.go` | • Update `models.Service` to include location hierarchy fields (`Region`, `Zone`, `Host`, `InstanceID`).<br>• Support hierarchical queries (`GET /services?region=...&kind=...`). |
+| **Ingestion** | `cmd/ingestion/main.go` | • Output structured JSON or Syslog access logs to a file (e.g. `/var/log/ssle/ingestion_access.log`) so that `wazuh-agent` can tail and analyze client requests.<br>• Log client IP, method, status code, response time, and user-agent. |
+| **Temperature** | `cmd/temperature/main.go` | • Support registering with hierarchical name tags (e.g. `region="pt-north", zone="lab-01"`). |
+| **Attacker** | `cmd/attacker/main.go` | • Add a flag `-mode shellshock` to generate Guide 4 attack headers (`User-Agent: () { :; }; ...`).<br>• Add coordination support for paired botnet runs (compatible with Guide 5 ApacheBench benchmarks). |
+| **Deploy Scripts** | `deploy_incus.sh` | • Configure logging directories on Incus containers mapped to host or local volumes for Wazuh agent scraping. |
+
+---
+
+## 5. Proposed Phased Implementation Plan
+
+```
+[Phase 1: Architecture & Naming] ──> [Phase 2: Guide 4 (Wazuh & Shellshock)] ──> [Phase 3: Guide 5 (DDoS & MitM)] ──> [Phase 4: Test Suite & Report]
+```
+
+### Phase 1: Hierarchical Naming & Structured Logging
+1. Update `internal/models/service.go` with location hierarchy attributes.
+2. Update `cmd/registry` to index services hierarchically and enable zone-based querying.
+3. Add structured access logging (JSON/syslog format) in `cmd/ingestion` and `cmd/registry` to enable Wazuh agent ingestion.
+
+### Phase 2: Wazuh SIEM Deployment & Threat 1 (Guide 4)
+1. Write `monitoring/wazuh/deploy_wazuh.sh` to spin up `wazuh-container` (manager + dashboard) in Incus.
+2. Install and configure `wazuh-agent` on the ingestion/gateway container.
+3. Configure Wazuh `<localfile>` log reading for the access logs.
+4. Add Wazuh custom rule `100100` and AlienVault reputation CDB list.
+5. Configure Wazuh `<active-response>` for `firewall-drop` (60s ban).
+6. Verify with Shellshock probe from `cmd/attacker`.
+
+### Phase 3: DDoS & Target Hardening — Threat 2 (Guide 5)
+1. Write `scripts/deploy_ddos_clients.sh` to launch `load-client-a` and `load-client-b` containers in Incus.
+2. Automate container resource limits (`limits.cpu=1`, `limits.memory=256MiB`).
+3. Run baseline (1 client, c=1) vs. paired concurrent run (2 clients, c=2) with ApacheBench.
+4. Record performance worksheet metrics (throughput, median, p95 latency, error count, Prometheus CPU/RAM).
+
+### Phase 4: Route Hijacking & MitM — Threat 3 (Guide 5)
+1. Write `scripts/deploy_mitm_topology.sh` to provision dual Incus subnets and an interceptor container.
+2. Configure interceptor `iptables` PREROUTING redirect to `mitmproxy` (port 8080).
+3. Demonstrate transparent interception of unencrypted HTTP traffic.
+4. Implement and demonstrate mitigation: mutual TLS (mTLS) or cryptographic message signatures so intercepted traffic cannot be read or forged.
+
+### Phase 5: CI Testing Infrastructure Update
+1. Extend `test_runner.sh` to validate the new hierarchical registry queries.
+2. Add automated regression checks for the three threat vectors.
+
+### Phase 6: Project 1 Report Preparation (`docs/project1_report.md`)
+Draft the final academic report following the required structure from `guidelines_v0.pdf`:
+* Introduction
+* State of the Art (SOA, SIEM, Prometheus, Attack-Defense Trees)
+* Service Architecture Used (Hierarchical SOA + Ingestion Pipeline)
+* Risk Management & Mitigation (ADTree, FCAPS Fault Management)
+* Three Threats Detailed Evaluation (Shellshock/Active-Response, DDoS/Resource Exhaustion, MitM/mTLS)
+* Scalability Evaluation & Discussion of Results
+* Conclusion & Future Work (bridge to Project 2)
+
+---
+
+## 6. Questions for Review Before Implementation
+
+1. **Threat Selection Confirmation:** Are you aligned with selecting **Threat 1: Shellshock / Injection (Guide 4)**, **Threat 2: DDoS / Resource Exhaustion (Guide 5 & 3)**, and **Threat 3: MitM / Route Interception (Guide 5)** as your 3 syllabus threats for Project 1?
+2. **Gateway Choice for Guide 4:** In Guide 4, a standard Apache server was used. For our project, would you prefer deploying a lightweight Apache/Nginx reverse proxy in front of the Go ingestion service (which naturally generates standard Apache logs for Wazuh), or having the Go ingestion service write Apache-compatible access logs directly?
+3. **Kubernetes Files:** Are you comfortable moving the unused Kubernetes deployment scripts (`deploy_k8s.sh`, `k8s/ssle-k8s.yaml`) into an `archive/` or `legacy/` subfolder to keep the primary repository focused on Incus?
