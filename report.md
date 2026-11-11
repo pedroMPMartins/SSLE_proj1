@@ -40,23 +40,33 @@ The following components currently exist in `incremental_system` but represent e
 
 ## 3. Gap Analysis: What is Missing for Project 1 & Guides 4–5
 
-### Gap 1: Scalable Hierarchical Naming & Logical/Physical Location (Project Requirement)
+### Gap 1: Scalable Hierarchical Naming & Logical/Physical Location (Project Requirement) — **STATUS: COMPLETED [x]**
 * **What Guidelines Mandate:**
   * Identification and registration of elements in a scalable way.
   * Clear distinction of where elements reside in physical terms (host machine) vs. logical terms (container/namespace).
   * Geographic location and delegation of responsibilities.
   * Ability to monitor elements by location, optimizing consumed bandwidth (bonus).
   * Rapid localization of incident sources.
-* **Current State:**
-  * In `internal/models/service.go`, service identity is flat: `ID` (32-char random hex), `Kind` (string), `URL` (string), `Timestamp`.
-  * No hierarchy, no physical host metadata, no logical zone, no region.
-* **What is Needed:**
-  * Refactor the Service model and Registry to support structured, hierarchical naming:
+* **Implemented Solution:**
+  * **Hierarchical Service Location Model (`internal/models/service.go`):**
+    Introduced `models.ServiceLocation` and Fully Qualified Service Names (FQSN) following the canonical taxonomy:
     ```
-    Format: <region>.<zone>.<host_type>.<instance_id>.<service_kind>
-    Example: eu-west.zone-a.incus-node1.srv-01.ingestion
+    <region>.<zone>.<physical_host>.<logical_env>.<instance_id>.<kind>
+    Example: pt-aveiro.lab-ssle.kali-vm.incus:ssle-ingestion.ingest-01.ingestion
     ```
-  * Registry endpoints (`GET /services?region=...&zone=...`) allowing location-aware discovery and delegated routing.
+    Provides explicit segregation of physical hardware (`physical_host`), logical isolation container (`logical_env`), availability zone (`zone`), and geographic region (`region`).
+  * **Locality-Aware Service Discovery & Bandwidth Optimization (`internal/function/discover.go`):**
+    Implemented `DiscoverLocally()` which prioritizes intra-zone endpoints first (zero cross-zone latency/bandwidth cost), expands to regional peers, and falls back to global services only if necessary.
+  * **Hierarchical Registry Query Endpoints (`cmd/registry/main.go`):**
+    Supported fine-grained querying across all dimensions:
+    `GET /services?region=...&zone=...&physical_host=...&logical_env=...&kind=...&prefix=...`
+    and `GET /services/{kind}?region=...&zone=...`.
+  * **Rapid Incident Localization Endpoint (`GET /services/locate/{query}`):**
+    Provides instant mapping from an incident symptom, service ID, FQSN, or endpoint IP to the exact physical machine, logical container, administrative domain, and remediation command (`incus exec <container> -- ...`).
+  * **Location-Aware Prometheus Monitoring (`cmd/health_exporter`):**
+    Exposes `region`, `zone`, `physical_host`, and `logical_env` as Prometheus metric labels on `service_health` and `service_response_time_seconds`, allowing location-based telemetry aggregation and regional monitoring delegation.
+  * **Comprehensive Automated Validation:**
+    Added unit tests in `internal/function/function_test.go`, integration tests in `tests/unit_and_integration_test.go`, and end-to-end assertions in `test_runner.sh` (Step 5.1b).
 
 ---
 
@@ -185,7 +195,7 @@ To integrate seamlessly with Wazuh, Incus multi-container networking, and hierar
 
 | Microservice | Location | Required Adjustment |
 | :--- | :--- | :--- |
-| **Registry** | `cmd/registry/main.go` | • Update `models.Service` to include location hierarchy fields (`Region`, `Zone`, `Host`, `InstanceID`).<br>• Support hierarchical queries (`GET /services?region=...&kind=...`). |
+| **Registry** | `cmd/registry/main.go` | **[DONE]** Updated `models.Service` with location hierarchy fields (`Region`, `Zone`, `PhysicalHost`, `LogicalEnv`, `FQSN`). Added query filtering and rapid incident localization (`GET /services/locate/{id}`). |
 | **Ingestion** | `cmd/ingestion/main.go` | • Output structured JSON or Syslog access logs to a file (e.g. `/var/log/ssle/ingestion_access.log`) so that `wazuh-agent` can tail and analyze client requests.<br>• Log client IP, method, status code, response time, and user-agent. |
 | **Temperature** | `cmd/temperature/main.go` | • Support registering with hierarchical name tags (e.g. `region="pt-north", zone="lab-01"`). |
 | **Attacker** | `cmd/attacker/main.go` | • Add a flag `-mode shellshock` to generate Guide 4 attack headers (`User-Agent: () { :; }; ...`).<br>• Add coordination support for paired botnet runs (compatible with Guide 5 ApacheBench benchmarks). |
@@ -200,8 +210,8 @@ To integrate seamlessly with Wazuh, Incus multi-container networking, and hierar
 ```
 
 ### Phase 1: Hierarchical Naming & Structured Logging
-1. Update `internal/models/service.go` with location hierarchy attributes.
-2. Update `cmd/registry` to index services hierarchically and enable zone-based querying.
+1. **[DONE]** Update `internal/models/service.go` with location hierarchy attributes and canonical FQSN.
+2. **[DONE]** Update `cmd/registry` to index services hierarchically, enable zone/region querying, and add rapid incident localization.
 3. Add structured access logging (JSON/syslog format) in `cmd/ingestion` and `cmd/registry` to enable Wazuh agent ingestion.
 
 ### Phase 2: Wazuh SIEM Deployment & Threat 1 (Guide 4)

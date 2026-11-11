@@ -173,6 +173,127 @@ func TestRegistryEndpoints(t *testing.T) {
 	}
 }
 
+// TestHierarchicalRegistryFeatures verifies FQSN construction, location filtering, and incident localization
+func TestHierarchicalRegistryFeatures(t *testing.T) {
+	registry := make(map[string]models.Service)
+	var mu sync.RWMutex
+
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("POST /register", func(w http.ResponseWriter, r *http.Request) {
+		var req models.Service
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			function.RespondJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		if req.Name == "" {
+			req.Name = req.BuildFQSN()
+		}
+		mu.Lock()
+		registry[req.ID] = req
+		mu.Unlock()
+		function.RespondJSON(w, http.StatusOK, map[string]any{
+			"message": "registered",
+			"fqsn":    req.Name,
+		})
+	})
+
+	mux.HandleFunc("GET /services/{kind}", func(w http.ResponseWriter, r *http.Request) {
+		kind := r.PathValue("kind")
+		q := r.URL.Query()
+		region := q.Get("region")
+		zone := q.Get("zone")
+
+		mu.RLock()
+		defer mu.RUnlock()
+		var res []models.Service
+		for _, s := range registry {
+			if s.MatchesFilter(region, zone, "", "", kind) {
+				res = append(res, s)
+			}
+		}
+		function.RespondJSON(w, http.StatusOK, res)
+	})
+
+	mux.HandleFunc("GET /services/locate/{query}", func(w http.ResponseWriter, r *http.Request) {
+		query := r.PathValue("query")
+		mu.RLock()
+		defer mu.RUnlock()
+		for _, s := range registry {
+			if s.ID == query || s.Name == query {
+				function.RespondJSON(w, http.StatusOK, map[string]any{
+					"status":   "FOUND",
+					"incident": s.LocateIncidentDetails(),
+				})
+				return
+			}
+		}
+		function.RespondJSON(w, http.StatusNotFound, map[string]string{"error": "Not found"})
+	})
+
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	// 1. Register two services in different locations
+	svc1 := models.Service{
+		ID:   "ingest-pt-1",
+		Kind: "ingestion",
+		URL:  "http://10.0.1.1:5001",
+		Location: models.ServiceLocation{
+			Region:       "pt-aveiro",
+			Zone:         "lab-ssle",
+			PhysicalHost: "kali-vm",
+			LogicalEnv:   "incus:ssle-ingestion",
+		},
+	}
+	svc2 := models.Service{
+		ID:   "ingest-eu-1",
+		Kind: "ingestion",
+		URL:  "http://10.0.2.1:5001",
+		Location: models.ServiceLocation{
+			Region:       "eu-west",
+			Zone:         "dc-cloud",
+			PhysicalHost: "dell-srv-02",
+			LogicalEnv:   "incus:ssle-ingestion",
+		},
+	}
+
+	for _, s := range []models.Service{svc1, svc2} {
+		body, _ := json.Marshal(s)
+		resp, err := http.Post(server.URL+"/register", "application/json", bytes.NewBuffer(body))
+		if err != nil || resp.StatusCode != http.StatusOK {
+			t.Fatalf("Failed to register: %v", err)
+		}
+	}
+
+	// 2. Query filtered by Region
+	resp, err := http.Get(server.URL + "/services/ingestion?region=pt-aveiro")
+	if err != nil || resp.StatusCode != http.StatusOK {
+		t.Fatalf("Failed to query regional services: %v", err)
+	}
+	var ptList []models.Service
+	json.NewDecoder(resp.Body).Decode(&ptList)
+	if len(ptList) != 1 || ptList[0].ID != "ingest-pt-1" {
+		t.Errorf("Expected 1 service in pt-aveiro, got %+v", ptList)
+	}
+
+	// 3. Test Rapid Incident Localization endpoint
+	resp, err = http.Get(server.URL + "/services/locate/ingest-pt-1")
+	if err != nil || resp.StatusCode != http.StatusOK {
+		t.Fatalf("Failed to locate incident: %v", err)
+	}
+	var locResp map[string]any
+	json.NewDecoder(resp.Body).Decode(&locResp)
+	if locResp["status"] != "FOUND" {
+		t.Errorf("Expected status FOUND, got %v", locResp["status"])
+	}
+	incident := locResp["incident"].(map[string]any)
+	if incident["physical_host"] != "kali-vm" || incident["zone"] != "lab-ssle" {
+		t.Errorf("Unexpected incident localization details: %+v", incident)
+	}
+}
+
+
 // TestIngestionDefensesValidation verifies rate limiting, plausibility bounds, and blocklisting
 func TestIngestionDefensesValidation(t *testing.T) {
 	minTemp := -50.0

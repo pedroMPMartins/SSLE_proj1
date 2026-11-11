@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"simple_soa/internal/models"
 	"sort"
 	"strings"
 	"sync"
@@ -13,15 +14,21 @@ import (
 )
 
 type TargetService struct {
-	Kind     string `json:"kind"`
-	URL      string `json:"url"`
-	ID       string `json:"id"`
+	Kind     string                 `json:"kind"`
+	URL      string                 `json:"url"`
+	ID       string                 `json:"id"`
+	Name     string                 `json:"name"`
+	Location models.ServiceLocation `json:"location"`
 	Endpoint string
 }
 
 type HealthSample struct {
 	Service      string
 	Endpoint     string
+	Region       string
+	Zone         string
+	PhysicalHost string
+	LogicalEnv   string
 	IsAlive      float64
 	ResponseTime float64
 }
@@ -47,11 +54,11 @@ func getEnv(key, fallback string) string {
 }
 
 var fallbackServices = []TargetService{
-	{Kind: "registry", URL: "http://localhost:5050", Endpoint: "http://localhost:5050/health"},
-	{Kind: "ingestion", URL: "http://localhost:5001", Endpoint: "http://localhost:5001/health"},
-	{Kind: "storage", URL: "http://localhost:5002", Endpoint: "http://localhost:5002/health"},
-	{Kind: "analytics", URL: "http://localhost:5003", Endpoint: "http://localhost:5003/health"},
-	{Kind: "temperature", URL: "http://localhost:5000", Endpoint: "http://localhost:5000/health"},
+	{Kind: "registry", URL: "http://localhost:5050", Endpoint: "http://localhost:5050/health", Location: models.ServiceLocation{Region: "pt-aveiro", Zone: "lab-ssle", PhysicalHost: "kali-vm", LogicalEnv: "incus:ssle-registry"}},
+	{Kind: "ingestion", URL: "http://localhost:5001", Endpoint: "http://localhost:5001/health", Location: models.ServiceLocation{Region: "pt-aveiro", Zone: "lab-ssle", PhysicalHost: "kali-vm", LogicalEnv: "incus:ssle-ingestion"}},
+	{Kind: "storage", URL: "http://localhost:5002", Endpoint: "http://localhost:5002/health", Location: models.ServiceLocation{Region: "pt-aveiro", Zone: "lab-ssle", PhysicalHost: "kali-vm", LogicalEnv: "incus:ssle-storage"}},
+	{Kind: "analytics", URL: "http://localhost:5003", Endpoint: "http://localhost:5003/health", Location: models.ServiceLocation{Region: "pt-aveiro", Zone: "lab-ssle", PhysicalHost: "kali-vm", LogicalEnv: "incus:ssle-analytics"}},
+	{Kind: "temperature", URL: "http://localhost:5000", Endpoint: "http://localhost:5000/health", Location: models.ServiceLocation{Region: "pt-aveiro", Zone: "lab-ssle", PhysicalHost: "kali-vm", LogicalEnv: "incus:ssle-temperature"}},
 }
 
 func discoverTargets() []TargetService {
@@ -73,12 +80,30 @@ func discoverTargets() []TargetService {
 		Kind:     "registry",
 		URL:      registryURL,
 		Endpoint: strings.TrimSuffix(registryURL, "/") + "/health",
+		Location: models.ServiceLocation{
+			Region:       getEnv("SERVICE_REGION", "pt-aveiro"),
+			Zone:         getEnv("SERVICE_ZONE", "lab-ssle"),
+			PhysicalHost: getEnv("PHYSICAL_HOST", "kali-vm"),
+			LogicalEnv:   "incus:ssle-registry",
+		},
 	})
 
 	for id, svc := range regMap {
 		if svc.URL != "" {
 			svc.ID = id
 			svc.Endpoint = strings.TrimSuffix(svc.URL, "/") + "/health"
+			if svc.Location.Region == "" {
+				svc.Location.Region = "pt-aveiro"
+			}
+			if svc.Location.Zone == "" {
+				svc.Location.Zone = "lab-ssle"
+			}
+			if svc.Location.PhysicalHost == "" {
+				svc.Location.PhysicalHost = "kali-vm"
+			}
+			if svc.Location.LogicalEnv == "" {
+				svc.Location.LogicalEnv = "incus:ssle-" + svc.Kind
+			}
 			targets = append(targets, svc)
 		}
 	}
@@ -91,43 +116,34 @@ func probeServices() {
 
 	for _, t := range targets {
 		start := time.Now()
-		alive := 0.0
-
 		resp, err := httpClient.Get(t.Endpoint)
 		duration := time.Since(start).Seconds()
 
+		isAlive := 0.0
 		if err == nil {
 			if resp.StatusCode == http.StatusOK {
-				alive = 1.0
-			} else {
-				// Fallback probe base url if /health is not 200
-				resp.Body.Close()
-				respBase, errBase := httpClient.Get(t.URL)
-				if errBase == nil {
-					if respBase.StatusCode < 500 {
-						alive = 1.0
-					}
-					respBase.Body.Close()
-				}
+				isAlive = 1.0
 			}
-			if resp != nil && resp.Body != nil {
-				resp.Body.Close()
-			}
+			resp.Body.Close()
 		}
 
 		results = append(results, HealthSample{
 			Service:      t.Kind,
 			Endpoint:     t.Endpoint,
-			IsAlive:      alive,
+			Region:       t.Location.Region,
+			Zone:         t.Location.Zone,
+			PhysicalHost: t.Location.PhysicalHost,
+			LogicalEnv:   t.Location.LogicalEnv,
+			IsAlive:      isAlive,
 			ResponseTime: duration,
 		})
 
-		statusStr := "UP"
-		if alive == 0.0 {
-			statusStr = "DOWN"
+		statusStr := "DOWN"
+		if isAlive == 1.0 {
+			statusStr = "UP"
 		}
-		log.Printf("[Health Probe] Service: %-12s Endpoint: %-32s Status: %-4s (%.4fs)\n",
-			t.Kind, t.Endpoint, statusStr, duration)
+		log.Printf("[Health Probe] Service: %-12s | Endpoint: %-30s | Status: %-4s | Latency: %.4fs (Region: %s, Host: %s)\n",
+			t.Kind, t.Endpoint, statusStr, duration, t.Location.Region, t.Location.PhysicalHost)
 	}
 
 	mu.Lock()
@@ -155,7 +171,8 @@ func metricsHandler(w http.ResponseWriter, r *http.Request) {
 	sb.WriteString("# HELP service_health Health status of the service (1 = UP, 0 = DOWN)\n")
 	sb.WriteString("# TYPE service_health gauge\n")
 	for _, s := range current {
-		sb.WriteString(fmt.Sprintf("service_health{endpoint=%q,service=%q} %.1f\n", s.Endpoint, s.Service, s.IsAlive))
+		sb.WriteString(fmt.Sprintf("service_health{endpoint=%q,logical_env=%q,physical_host=%q,region=%q,service=%q,zone=%q} %.1f\n",
+			s.Endpoint, s.LogicalEnv, s.PhysicalHost, s.Region, s.Service, s.Zone, s.IsAlive))
 	}
 
 	sb.WriteString("\n")
@@ -164,7 +181,8 @@ func metricsHandler(w http.ResponseWriter, r *http.Request) {
 	sb.WriteString("# HELP service_response_time_seconds HTTP health check response time in seconds\n")
 	sb.WriteString("# TYPE service_response_time_seconds gauge\n")
 	for _, s := range current {
-		sb.WriteString(fmt.Sprintf("service_response_time_seconds{endpoint=%q,service=%q} %.6f\n", s.Endpoint, s.Service, s.ResponseTime))
+		sb.WriteString(fmt.Sprintf("service_response_time_seconds{endpoint=%q,logical_env=%q,physical_host=%q,region=%q,service=%q,zone=%q} %.6f\n",
+			s.Endpoint, s.LogicalEnv, s.PhysicalHost, s.Region, s.Service, s.Zone, s.ResponseTime))
 	}
 
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
@@ -180,9 +198,11 @@ func main() {
 	log.Printf("  Metrics endpoint: http://localhost:%s/metrics", port)
 	log.Printf("==============================================================")
 
-	// Background health checking loop
+	// Run initial probe synchronously so metrics are ready immediately
+	probeServices()
+
+	// Periodic probe loop
 	go func() {
-		probeServices()
 		ticker := time.NewTicker(checkInterval)
 		defer ticker.Stop()
 		for range ticker.C {
@@ -197,11 +217,8 @@ func main() {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{"status":"UP","service":"health_exporter"}`))
 	})
-	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`<html><body><h1>SSLE Health Exporter</h1><p><a href="/metrics">Metrics</a></p></body></html>`))
-	})
 
 	if err := http.ListenAndServe(":"+port, mux); err != nil {
-		log.Fatalf("Health exporter server failed: %v", err)
+		log.Fatalf("Health Exporter server failed: %v", err)
 	}
 }

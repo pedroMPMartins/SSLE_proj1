@@ -352,6 +352,56 @@ if [ "$REG_DISCOVERY_PASS" = false ]; then
     FAILED_STEPS+=("Registry Dynamic Discovery Test")
 fi
 
+# 5.1b Hierarchical Naming & Rapid Incident Localization (Gap 1)
+log_info "Validating Hierarchical Naming, Location Filtering & Incident Localization..."
+HIERARCHICAL_PASS=true
+
+# Check FQSN presence in Registry
+if echo "$REG_SERVICES" | grep -q '"location"' && echo "$REG_SERVICES" | grep -q '"region"'; then
+    log_success "Registry stores structured physical/logical location metadata."
+else
+    log_error "Registry missing location metadata in service catalog!"
+    HIERARCHICAL_PASS=false
+fi
+
+# Check regional location query filter
+REG_FILTER_DATA=$(curl -s "${TEST_REGISTRY_URL}/services?region=pt-aveiro" || echo "{}")
+if echo "$REG_FILTER_DATA" | grep -q '"kind":"storage"'; then
+    log_success "Location-aware discovery: Query filtered by region=pt-aveiro successfully matched services."
+else
+    log_error "Location filtering by region failed to return expected services!"
+    HIERARCHICAL_PASS=false
+fi
+
+# Check empty match for non-existent region
+EMPTY_FILTER_DATA=$(curl -s "${TEST_REGISTRY_URL}/services?region=nonexistent-region" || echo "{}")
+if [ "$EMPTY_FILTER_DATA" = "{}" ]; then
+    log_success "Location-aware discovery: Non-matching region correctly returned empty catalog."
+else
+    log_error "Location filtering returned unexpected results for non-existent region: $EMPTY_FILTER_DATA"
+    HIERARCHICAL_PASS=false
+fi
+
+# Rapid Incident Localization lookup (locating storage service by ID)
+STORAGE_ID=$(curl -s "${TEST_REGISTRY_URL}/services/storage" | jq -r '.[0].id // empty')
+if [ -n "$STORAGE_ID" ]; then
+    LOCATE_RESP=$(curl -s "${TEST_REGISTRY_URL}/services/locate/${STORAGE_ID}" || echo "{}")
+    if echo "$LOCATE_RESP" | grep -q '"status":"FOUND"' && echo "$LOCATE_RESP" | grep -q '"physical_host"'; then
+        log_success "Rapid Incident Localization: Service '${STORAGE_ID}' instantly located to physical host & container environment."
+    else
+        log_error "Incident localization endpoint failed for service '${STORAGE_ID}': $LOCATE_RESP"
+        HIERARCHICAL_PASS=false
+    fi
+else
+    log_warning "Could not retrieve storage ID for localization test, skipping locate probe."
+fi
+
+if [ "$HIERARCHICAL_PASS" = false ]; then
+    OVERALL_SUCCESS=false
+    FAILED_STEPS+=("Hierarchical Naming & Incident Localization")
+fi
+
+
 # 5.2 Ingestion to Storage Dataflow
 log_info "Testing telemetry ingestion and storage persistence..."
 INGEST_PAYLOAD='{"device_id":"test-legit-sensor-01","temperature":24.50}'
