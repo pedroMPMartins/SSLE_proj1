@@ -285,3 +285,73 @@ func TestDiscoverLocally(t *testing.T) {
 		t.Errorf("Expected regional fallback to find 'ingest-local', got %s", chosenRegional.ID)
 	}
 }
+
+func TestFQSNUnhappyPaths(t *testing.T) {
+	// 1. Invalid FQSN parsing: segments < 6
+	invalidFQSNs := []string{
+		"",
+		"just-one-word",
+		"pt-aveiro.zone",
+		"pt-aveiro.zone.host.env",
+		"pt-aveiro.zone.host.env.id", // 5 segments instead of required 6
+	}
+
+	for _, bad := range invalidFQSNs {
+		var s models.Service
+		err := s.ParseFQSN(bad)
+		if err == nil {
+			t.Errorf("Expected ParseFQSN to fail for malformed input %q, but got nil", bad)
+		}
+	}
+
+	// 2. Identifier sanitization edge cases
+	cases := []struct {
+		input    string
+		expected string
+	}{
+		{"  pt-aveiro  ", "pt-aveiro"},
+		{"zone with spaces", "zone-with-spaces"},
+		{"incus/container/1", "incus-container-1"},
+		{"clean-id-123", "clean-id-123"},
+	}
+
+	for _, c := range cases {
+		out := models.SanitizeIdentifier(c.input)
+		if out != c.expected {
+			t.Errorf("SanitizeIdentifier(%q) = %q, expected %q", c.input, out, c.expected)
+		}
+	}
+}
+
+func TestDiscoverUnhappyPaths(t *testing.T) {
+	// Server returning HTTP 500
+	server500 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+	}))
+	defer server500.Close()
+
+	_, err := function.DiscoverServices(server500.URL, "storage")
+	if err == nil {
+		t.Errorf("Expected error when registry returns HTTP 500, got nil")
+	}
+
+	// Server returning invalid JSON
+	serverBadJSON := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("{this is not valid json}"))
+	}))
+	defer serverBadJSON.Close()
+
+	_, errBad := function.DiscoverServices(serverBadJSON.URL, "storage")
+	if errBad == nil {
+		t.Errorf("Expected error when registry returns invalid JSON, got nil")
+	}
+
+	// Unreachable server (invalid URL)
+	_, errNet := function.DiscoverServices("http://127.0.0.1:59999", "storage")
+	if errNet == nil {
+		t.Errorf("Expected network error for unreachable registry, got nil")
+	}
+}
+

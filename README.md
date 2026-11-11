@@ -163,3 +163,34 @@ incus exec ssle-ingestion -- cat /var/ossec/logs/active-responses.log
 incus exec ssle-ingestion -- iptables -L -n -v
 ```
 
+
+## Guide 5: Distributed Denial of Service (DDoS) & Target Hardening
+
+Comprehensive analysis, hardening strategies, and experimental worksheets are documented in [`docs/guide5_ddos_and_hardening.md`](docs/guide5_ddos_and_hardening.md).
+
+### 1. Apply Incus Resource Quotas (CPU & Memory Hardening)
+```bash
+# Constrain target ingestion container to 1 CPU core and 256MB RAM
+./scripts/set_target_limits.sh apply ssle-ingestion 1 256MiB
+
+# Query current resource usage and limits
+./scripts/set_target_limits.sh show ssle-ingestion
+```
+
+### 2. Deploy Botnet Client Containers (`load-client-a` & `load-client-b`)
+```bash
+./scripts/deploy_ddos_clients.sh
+```
+
+### 3. Run Automated DDoS Benchmark & Worksheet Generator
+```bash
+# Runs Baseline (1 client, c=1) vs Distributed Attack (2 clients, c=2)
+./scripts/run_ddos_benchmark.sh http://ssle-ingestion.incus:5001 40 2
+```
+
+### 4. Teardown Botnet Clients
+```bash
+./scripts/cleanup_ddos_clients.sh
+```
+
+

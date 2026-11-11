@@ -403,6 +403,44 @@ if [ "$HIERARCHICAL_PASS" = false ]; then
     FAILED_STEPS+=("Hierarchical Naming & Incident Localization")
 fi
 
+# 5.1c Registry Unhappy Paths & Edge Case Validation
+log_info "Validating Registry Error Handling (Unhappy Paths)..."
+REG_UNHAPPY_PASS=true
+
+# Empty body registration -> 400
+EMPTY_REG_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${TEST_REGISTRY_URL}/register" -d "")
+if [ "$EMPTY_REG_CODE" -eq 400 ]; then
+    log_success "Registry rejected empty registration payload (HTTP 400)."
+else
+    log_error "Registry failed to reject empty registration payload! Got HTTP $EMPTY_REG_CODE"
+    REG_UNHAPPY_PASS=false
+fi
+
+# Missing required fields -> 400
+INCOMPLETE_REG_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${TEST_REGISTRY_URL}/register" \
+    -H "Content-Type: application/json" -d '{"id":"bad-reg"}')
+if [ "$INCOMPLETE_REG_CODE" -eq 400 ]; then
+    log_success "Registry rejected incomplete registration missing kind/URL (HTTP 400)."
+else
+    log_error "Registry failed to reject incomplete registration! Got HTTP $INCOMPLETE_REG_CODE"
+    REG_UNHAPPY_PASS=false
+fi
+
+# Non-existent incident localization -> 404
+NONEXIST_LOCATE_CODE=$(curl -s -o /dev/null -w "%{http_code}" "${TEST_REGISTRY_URL}/services/locate/ghost-service-xyz")
+if [ "$NONEXIST_LOCATE_CODE" -eq 404 ]; then
+    log_success "Registry correctly returned 404 for non-existent service localization."
+else
+    log_error "Registry returned unexpected status for non-existent service locate! Got HTTP $NONEXIST_LOCATE_CODE"
+    REG_UNHAPPY_PASS=false
+fi
+
+if [ "$REG_UNHAPPY_PASS" = false ]; then
+    OVERALL_SUCCESS=false
+    FAILED_STEPS+=("Registry Unhappy Paths Validation")
+fi
+
+
 
 # 5.2 Ingestion to Storage Dataflow
 log_info "Testing telemetry ingestion and storage persistence..."
@@ -472,6 +510,62 @@ else
     OVERALL_SUCCESS=false
     FAILED_STEPS+=("Defense: Device Blocklisting (403)")
 fi
+
+# 6.2b Ingestion Payload Validation & Exact Boundary Checks
+log_info "Testing Ingestion Malformed Payload & Exact Boundary Tests..."
+INGEST_UNHAPPY_PASS=true
+
+# Empty request body -> 400
+EMPTY_BODY_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${TEST_INGESTION_URL}/ingest" -d "")
+if [ "$EMPTY_BODY_CODE" -eq 400 ]; then
+    log_success "Ingestion rejected empty request body (HTTP 400)."
+else
+    log_error "Ingestion failed to reject empty body! Got HTTP $EMPTY_BODY_CODE"
+    INGEST_UNHAPPY_PASS=false
+fi
+
+# Malformed JSON syntax -> 400
+BAD_JSON_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${TEST_INGESTION_URL}/ingest" \
+    -H "Content-Type: application/json" -d '{"device_id":"bad", "temperature":')
+if [ "$BAD_JSON_CODE" -eq 400 ]; then
+    log_success "Ingestion rejected malformed JSON syntax (HTTP 400)."
+else
+    log_error "Ingestion failed to reject malformed JSON! Got HTTP $BAD_JSON_CODE"
+    INGEST_UNHAPPY_PASS=false
+fi
+
+# Exact boundary test: -50.0 (exact min allowed) -> 200
+MIN_BOUND_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${TEST_INGESTION_URL}/ingest" \
+    -H "Content-Type: application/json" -d '{"device_id":"boundary-test","temperature":-50.0}')
+# Exact boundary test: 100.0 (exact max allowed) -> 200
+MAX_BOUND_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${TEST_INGESTION_URL}/ingest" \
+    -H "Content-Type: application/json" -d '{"device_id":"boundary-test","temperature":100.0}')
+
+if [ "$MIN_BOUND_CODE" -eq 200 ] && [ "$MAX_BOUND_CODE" -eq 200 ]; then
+    log_success "Ingestion accepted exact boundary values (-50.0°C and 100.0°C)."
+else
+    log_error "Ingestion boundary test failed! (Min -50.0: HTTP $MIN_BOUND_CODE, Max 100.0: HTTP $MAX_BOUND_CODE)"
+    INGEST_UNHAPPY_PASS=false
+fi
+
+# Just outside boundary: -50.01 and 100.01 -> 422
+OUT_MIN_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${TEST_INGESTION_URL}/ingest" \
+    -H "Content-Type: application/json" -d '{"device_id":"boundary-test","temperature":-50.01}')
+OUT_MAX_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${TEST_INGESTION_URL}/ingest" \
+    -H "Content-Type: application/json" -d '{"device_id":"boundary-test","temperature":100.01}')
+
+if [ "$OUT_MIN_CODE" -eq 422 ] && [ "$OUT_MAX_CODE" -eq 422 ]; then
+    log_success "Ingestion rejected just-out-of-bounds readings (-50.01°C and 100.01°C) with HTTP 422."
+else
+    log_error "Ingestion boundary rejection failed! (Out-Min: HTTP $OUT_MIN_CODE, Out-Max: HTTP $OUT_MAX_CODE)"
+    INGEST_UNHAPPY_PASS=false
+fi
+
+if [ "$INGEST_UNHAPPY_PASS" = false ]; then
+    OVERALL_SUCCESS=false
+    FAILED_STEPS+=("Ingestion Unhappy & Boundary Path Validation")
+fi
+
 
 # 6.3 DoS Flood Defense: Token Bucket Rate Limiting
 log_info "Testing Defense against High-Rate DoS Flooding (Rate Limiter)..."
@@ -555,6 +649,23 @@ else
     log_error "Failed to execute AlienVault CDB generation script!"
     OVERALL_SUCCESS=false
     FAILED_STEPS+=("AlienVault CDB List Generation")
+fi
+
+# 6.7 Guide 5: Distributed Denial of Service (DDoS) & Benchmark Worksheet
+log_info "Testing Guide 5: Distributed Denial of Service (DDoS) & Hardening Benchmark..."
+BENCH_OUT="${TEST_TMP_DIR}/ddos_bench_results.txt"
+if bash scripts/run_ddos_benchmark.sh "${TEST_INGESTION_URL}" 20 2 > "$BENCH_OUT" 2>&1; then
+    if grep -q "Throughput (req/s)" "$BENCH_OUT" && grep -q "Median Latency" "$BENCH_OUT"; then
+        log_success "DDoS Benchmark & Worksheet: Successfully generated throughput and latency percentiles under multi-client load."
+    else
+        log_error "DDoS Benchmark output missing expected worksheet metrics!"
+        OVERALL_SUCCESS=false
+        FAILED_STEPS+=("Guide 5 DDoS Benchmark Runner")
+    fi
+else
+    log_error "Failed to execute DDoS benchmark runner!"
+    OVERALL_SUCCESS=false
+    FAILED_STEPS+=("Guide 5 DDoS Benchmark Runner")
 fi
 
 

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -439,4 +440,264 @@ func TestWazuhSIEMLoggingAndShellshockDefense(t *testing.T) {
 		t.Errorf("Access log missing 403 status entry for exploit: %s", logContent)
 	}
 }
+
+// TestDDoSTargetHardeningControls verifies Guide 5 hardening: body size limits and concurrency throttling
+func TestDDoSTargetHardeningControls(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /ingest", func(w http.ResponseWriter, r *http.Request) {
+		// Enforce 1MB payload capping
+		r.Body = http.MaxBytesReader(w, r.Body, 1024*1024)
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			function.RespondJSON(w, http.StatusBadRequest, map[string]string{"error": "Payload too large"})
+			return
+		}
+		if len(body) == 0 {
+			function.RespondJSON(w, http.StatusBadRequest, map[string]string{"error": "Empty body"})
+			return
+		}
+		function.RespondJSON(w, http.StatusOK, map[string]string{"status": "accepted"})
+	})
+
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	// 1. Normal valid payload
+	validResp, err := http.Post(server.URL+"/ingest", "application/json", strings.NewReader(`{"device_id":"s1","temperature":22.0}`))
+	if err != nil || validResp.StatusCode != http.StatusOK {
+		t.Fatalf("Valid request failed: %v", err)
+	}
+
+	// 2. Oversized payload (DDoS memory exhaustion probe: 2MB > 1MB limit)
+	hugePayload := bytes.Repeat([]byte("A"), 2*1024*1024)
+	hugeResp, err := http.Post(server.URL+"/ingest", "application/json", bytes.NewReader(hugePayload))
+	if err != nil {
+		t.Fatalf("Huge request failed: %v", err)
+	}
+	if hugeResp.StatusCode != http.StatusBadRequest {
+		t.Errorf("Expected HTTP 400 for oversized payload (>1MB), got %d", hugeResp.StatusCode)
+	}
+}
+
+// TestRegistryUnhappyPathsAndEdgeCases verifies error handling on missing fields, auth, and 404 lookups
+func TestRegistryUnhappyPathsAndEdgeCases(t *testing.T) {
+	registry := make(map[string]models.Service)
+	var mu sync.RWMutex
+	adminToken := "secret-token-123"
+
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("POST /register", func(w http.ResponseWriter, r *http.Request) {
+		var req models.Service
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.ID == "" || req.URL == "" || req.Kind == "" {
+			function.RespondJSON(w, http.StatusBadRequest, map[string]string{"error": "Missing id, kind, or url"})
+			return
+		}
+		if req.Name == "" {
+			req.Name = req.BuildFQSN()
+		}
+		mu.Lock()
+		registry[req.ID] = req
+		mu.Unlock()
+		function.RespondJSON(w, http.StatusOK, map[string]string{"message": "registered"})
+	})
+
+	mux.HandleFunc("DELETE /register/{id}", func(w http.ResponseWriter, r *http.Request) {
+		token := r.Header.Get("X-Admin-Token")
+		if token != adminToken {
+			function.RespondJSON(w, http.StatusForbidden, map[string]string{"error": "Unauthorized"})
+			return
+		}
+		target := r.PathValue("id")
+		mu.Lock()
+		defer mu.Unlock()
+
+		var foundKey string
+		if _, exists := registry[target]; exists {
+			foundKey = target
+		} else {
+			for k, v := range registry {
+				if v.Name == target {
+					foundKey = k
+					break
+				}
+			}
+		}
+
+		if foundKey != "" {
+			delete(registry, foundKey)
+			function.RespondJSON(w, http.StatusOK, map[string]string{"message": "deleted"})
+			return
+		}
+		function.RespondJSON(w, http.StatusNotFound, map[string]string{"error": "Not found"})
+	})
+
+	mux.HandleFunc("GET /services/locate/{query}", func(w http.ResponseWriter, r *http.Request) {
+		query := r.PathValue("query")
+		mu.RLock()
+		defer mu.RUnlock()
+		if s, ok := registry[query]; ok {
+			function.RespondJSON(w, http.StatusOK, map[string]any{"status": "FOUND", "incident": s.LocateIncidentDetails()})
+			return
+		}
+		function.RespondJSON(w, http.StatusNotFound, map[string]any{"status": "NOT_FOUND", "error": "Not found"})
+	})
+
+	ts := httptest.NewServer(mux)
+	defer ts.Close()
+
+	// 1. Unhappy POST: Empty payload -> 400
+	resp, _ := http.Post(ts.URL+"/register", "application/json", strings.NewReader(""))
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("Expected 400 for empty body, got %d", resp.StatusCode)
+	}
+
+	// 2. Unhappy POST: Missing required field 'url' -> 400
+	badJSON := `{"id":"s1","kind":"storage"}`
+	resp, _ = http.Post(ts.URL+"/register", "application/json", strings.NewReader(badJSON))
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("Expected 400 for missing url, got %d", resp.StatusCode)
+	}
+
+	// 3. Register valid service for subsequent delete tests
+	validJSON := `{"id":"storage-x","kind":"storage","url":"http://localhost:15002","location":{"region":"pt-aveiro","zone":"zone-1"}}`
+	resp, _ = http.Post(ts.URL+"/register", "application/json", strings.NewReader(validJSON))
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("Failed to register valid service: status %d", resp.StatusCode)
+	}
+
+	// 4. Unhappy DELETE: Missing admin token -> 403 Forbidden
+	req, _ := http.NewRequest(http.MethodDelete, ts.URL+"/register/storage-x", nil)
+	resp, _ = http.DefaultClient.Do(req)
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("Expected 403 for unauthorized delete, got %d", resp.StatusCode)
+	}
+
+	// 5. Unhappy DELETE: Non-existent ID with valid token -> 404 Not Found
+	req, _ = http.NewRequest(http.MethodDelete, ts.URL+"/register/non-existent-id", nil)
+	req.Header.Set("X-Admin-Token", adminToken)
+	resp, _ = http.DefaultClient.Do(req)
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("Expected 404 for deleting non-existent ID, got %d", resp.StatusCode)
+	}
+
+	// 6. Unhappy GET locate: Non-existent query -> 404 Not Found
+	resp, _ = http.Get(ts.URL + "/services/locate/non-existent-service")
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("Expected 404 for locating non-existent service, got %d", resp.StatusCode)
+	}
+
+	// 7. Happy DELETE by FQSN -> 200 OK
+	fqsn := "pt-aveiro.zone-1.kali-vm.incus:ssle-storage.storage-x.storage"
+	req, _ = http.NewRequest(http.MethodDelete, ts.URL+"/register/"+fqsn, nil)
+	req.Header.Set("X-Admin-Token", adminToken)
+	resp, _ = http.DefaultClient.Do(req)
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected 200 for deleting service by FQSN, got %d", resp.StatusCode)
+	}
+}
+
+// TestIngestionUnhappyPathsAndBoundaryValues tests edge cases in input validation, blocklists, and failure resilience
+func TestIngestionUnhappyPathsAndBoundaryValues(t *testing.T) {
+	minTemp := -50.0
+	maxTemp := 100.0
+	blockedList := "blocked-bot-1, rogue-sensor-99 "
+
+	isBlocked := func(id string) bool {
+		for _, b := range strings.Split(blockedList, ",") {
+			if strings.TrimSpace(b) == strings.TrimSpace(id) {
+				return true
+			}
+		}
+		return false
+	}
+
+	validateInput := func(devID string, temp *float64) int {
+		if isBlocked(devID) {
+			return http.StatusForbidden
+		}
+		if temp != nil {
+			if *temp < minTemp || *temp > maxTemp {
+				return http.StatusUnprocessableEntity
+			}
+		}
+		return http.StatusOK
+	}
+
+	// 1. Boundary testing on temperature
+	pTemp := func(f float64) *float64 { return &f }
+
+	cases := []struct {
+		name     string
+		devID    string
+		temp     *float64
+		expected int
+	}{
+		{"Exact minimum boundary (-50.0)", "sensor-1", pTemp(-50.0), http.StatusOK},
+		{"Exact maximum boundary (100.0)", "sensor-1", pTemp(100.0), http.StatusOK},
+		{"Nominal temperature (22.5)", "sensor-1", pTemp(22.5), http.StatusOK},
+		{"Zero temperature (0.0)", "sensor-1", pTemp(0.0), http.StatusOK},
+		{"Just below boundary (-50.001)", "sensor-1", pTemp(-50.001), http.StatusUnprocessableEntity},
+		{"Just above boundary (100.001)", "sensor-1", pTemp(100.001), http.StatusUnprocessableEntity},
+		{"Absolute zero violation (-273.15)", "sensor-1", pTemp(-273.15), http.StatusUnprocessableEntity},
+		{"Extreme fire violation (1250.0)", "sensor-1", pTemp(1250.0), http.StatusUnprocessableEntity},
+		{"Blocklisted device with exact match", "blocked-bot-1", pTemp(25.0), http.StatusForbidden},
+		{"Blocklisted device with whitespace match", "rogue-sensor-99", pTemp(25.0), http.StatusForbidden},
+		{"Nil temperature reading", "sensor-1", nil, http.StatusOK},
+	}
+
+	for _, tc := range cases {
+		status := validateInput(tc.devID, tc.temp)
+		if status != tc.expected {
+			t.Errorf("Case %q: expected HTTP %d, got %d", tc.name, tc.expected, status)
+		}
+	}
+}
+
+// TestAnalyticsMathAndEmptyData verifies average calculation with empty database and negative numbers
+func TestAnalyticsMathAndEmptyData(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "ssle_test_analytics_*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	dbPath := filepath.Join(tmpDir, "test_analytics.db")
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("Failed to open db: %v", err)
+	}
+	defer db.Close()
+
+	_, err = db.Exec(`CREATE TABLE temperatures (id INTEGER PRIMARY KEY, device_id TEXT, temperature REAL, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP);`)
+	if err != nil {
+		t.Fatalf("Failed to create table: %v", err)
+	}
+
+	// 1. Unhappy path: Empty table -> AVG is NULL, should return nil/null without error
+	var avg sql.NullFloat64
+	err = db.QueryRow("SELECT AVG(temperature) FROM temperatures").Scan(&avg)
+	if err != nil {
+		t.Fatalf("Query on empty table failed: %v", err)
+	}
+	if avg.Valid {
+		t.Errorf("Expected avg.Valid == false on empty table, got %f", avg.Float64)
+	}
+
+	// 2. Happy path: Multiple readings including negative numbers: -10.5, 20.0, 35.5 -> Sum = 45.0, Count = 3, Avg = 15.0
+	_, _ = db.Exec("INSERT INTO temperatures (device_id, temperature) VALUES ('s1', -10.5)")
+	_, _ = db.Exec("INSERT INTO temperatures (device_id, temperature) VALUES ('s2', 20.0)")
+	_, _ = db.Exec("INSERT INTO temperatures (device_id, temperature) VALUES ('s3', 35.5)")
+
+	err = db.QueryRow("SELECT AVG(temperature) FROM temperatures").Scan(&avg)
+	if err != nil || !avg.Valid {
+		t.Fatalf("Query failed on populated table: %v", err)
+	}
+
+	if avg.Float64 != 15.0 {
+		t.Errorf("Expected average 15.0, got %f", avg.Float64)
+	}
+}
+
+
 

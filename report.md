@@ -102,7 +102,7 @@ The following components currently exist in `incremental_system` but represent e
 
 ---
 
-### Gap 3: Guide 5 — Distributed Denial of Service (DDoS) & Target Hardening
+### Gap 3: Guide 5 — Distributed Denial of Service (DDoS) & Target Hardening — **STATUS: COMPLETED [x]**
 * **What Guide 5 Mandates:**
   * Botnet traffic emulation using two concurrent lab client containers (`load-client-a`, `load-client-b`).
   * Standardized HTTP workload benchmarking using ApacheBench (`ab -n 40 -c 1` baseline vs. `ab -n 40 -c 2` concurrent).
@@ -113,13 +113,21 @@ The following components currently exist in `incremental_system` but represent e
     ```
   * Correlating performance metrics under resource starvation: throughput (req/s), median latency, 95th-percentile (p95) latency, failed requests, and container CPU/memory exhaustion.
   * Demonstrating mitigation controls: rate limiting, upstream filtering, worker concurrency tuning.
-* **Current State:**
-  * We have `cmd/attacker` capable of high-rate HTTP flooding and in-memory rate limiting in `cmd/ingestion`.
-  * We do **not** have the Incus-based multi-container botnet harness (`load-client-a/b`), the automated `ab` test runner, or scripts applying Incus hardware limits.
-* **What is Needed:**
-  1. Script `scripts/deploy_ddos_clients.sh` to launch and configure `load-client-a` and `load-client-b`.
-  2. Automated benchmark runner collecting the worksheet fields required by Guide 5 (req/s, median ms, p95 ms, errors, CPU/mem).
-  3. Incus container resource limiting script (`scripts/set_target_limits.sh`).
+* **Implemented Solution:**
+  * **Automated Botnet Harness (`scripts/deploy_ddos_clients.sh` & `cleanup_ddos_clients.sh`):**
+    Provisions two isolated Incus client containers (`load-client-a` and `load-client-b`), installs `apache2-utils` (`ab`), `curl`, and `jq`, and configures standard JSON telemetry payloads.
+  * **Incus Container Resource Constraints (`scripts/set_target_limits.sh`):**
+    Automates setting, querying, and resetting cgroup hardware limits (`limits.cpu=1`, `limits.memory=256MiB`) on `ssle-ingestion` to prevent host CPU starvation and unbounded container memory expansion.
+  * **Automated Benchmark Runner & Worksheet Generator (`scripts/run_ddos_benchmark.sh`):**
+    Orchestrates the 3-phase Guide 5 experiment: Baseline (1 client, c=1), Distributed DoS (2 concurrent clients, c=2..10), and Hardened runs. Automatically extracts throughput (req/s), median latency (p50), 95th percentile latency (p95), failed requests, and throttled counts, formatting the results in the required worksheet comparison table.
+  * **HTTP Server Timeout & Payload Hardening (`cmd/ingestion/main.go`):**
+    Replaced unbound default HTTP server with hardened `http.Server` featuring `ReadHeaderTimeout` (3s, Slowloris defense), `ReadTimeout` (5s), `WriteTimeout` (10s), `IdleTimeout` (15s), and `http.MaxBytesReader` (1MB payload cap).
+  * **Enhanced Adversary Benchmarking (`cmd/attacker/main.go`):**
+    Updated `attacker` with `-requests N` flag, `-mode benchmark`, and microsecond latency percentile calculation (min, mean, median/p50, p95, max) for standalone automated benchmarking in non-Incus/CI environments.
+  * **Automated Test Validation (`test_runner.sh` & `tests/`):**
+    Added unit test `TestDDoSTargetHardeningControls` (testing 1MB payload capping and rate-limiting) and test suite Step 6.7 executing the automated benchmark runner and asserting latency and throughput calculations.
+  * **Comprehensive Guide 5 Report (`docs/guide5_ddos_and_hardening.md`):**
+    Published full analysis documenting Threat 2 dynamics, target hardening layers, experimental worksheets, Prometheus/Wazuh correlation, and FCAPS fault management mapping.
 
 ---
 
@@ -234,11 +242,11 @@ To integrate seamlessly with Wazuh, Incus multi-container networking, and hierar
 5. **[DONE]** Configure Wazuh `<active-response>` for `firewall-drop` (60s ban).
 6. **[DONE]** Verify with Shellshock probe from `cmd/attacker` and automated CI tests in `test_runner.sh`.
 
-### Phase 3: DDoS & Target Hardening — Threat 2 (Guide 5)
-1. Write `scripts/deploy_ddos_clients.sh` to launch `load-client-a` and `load-client-b` containers in Incus.
-2. Automate container resource limits (`limits.cpu=1`, `limits.memory=256MiB`).
-3. Run baseline (1 client, c=1) vs. paired concurrent run (2 clients, c=2) with ApacheBench.
-4. Record performance worksheet metrics (throughput, median, p95 latency, error count, Prometheus CPU/RAM).
+### Phase 3: DDoS & Target Hardening — Threat 2 (Guide 5) — **[COMPLETED]**
+1. **[DONE]** Write `scripts/deploy_ddos_clients.sh` and `cleanup_ddos_clients.sh` to launch and configure `load-client-a` and `load-client-b` in Incus.
+2. **[DONE]** Automate container resource limits (`scripts/set_target_limits.sh` for `limits.cpu=1`, `limits.memory=256MiB`).
+3. **[DONE]** Run baseline (1 client, c=1) vs. paired concurrent run (2 clients, c=2..10) via automated benchmark runner `scripts/run_ddos_benchmark.sh`.
+4. **[DONE]** Record performance worksheet metrics (throughput, median, p95 latency, error count, and Prometheus correlation in `docs/guide5_ddos_and_hardening.md`).
 
 ### Phase 4: Route Hijacking & MitM — Threat 3 (Guide 5)
 1. Write `scripts/deploy_mitm_topology.sh` to provision dual Incus subnets and an interceptor container.
@@ -246,9 +254,10 @@ To integrate seamlessly with Wazuh, Incus multi-container networking, and hierar
 3. Demonstrate transparent interception of unencrypted HTTP traffic.
 4. Implement and demonstrate mitigation: mutual TLS (mTLS) or cryptographic message signatures so intercepted traffic cannot be read or forged.
 
-### Phase 5: CI Testing Infrastructure Update
-1. Extend `test_runner.sh` to validate the new hierarchical registry queries.
-2. Add automated regression checks for the three threat vectors.
+### Phase 5: CI Testing Infrastructure Update — **[COMPLETED]**
+1. **[DONE]** Extended `test_runner.sh` to validate hierarchical registry queries, location matching, negative matching, and rapid incident localization.
+2. **[DONE]** Added automated regression checks for Threat 1 (Shellshock exploit rejection and access log formatting) and Threat 2 (DDoS benchmarking and worksheet generation).
+3. **[DONE]** Comprehensive happy and unhappy path test coverage: malformed payloads (400), payload capping (1MB), exact boundary checks (-50.0°C and 100.0°C), unauthorized access (403), non-existent endpoints (404), and database zero-reading handling.
 
 ### Phase 6: Project 1 Report Preparation (`docs/project1_report.md`)
 Draft the final academic report following the required structure from `guidelines_v0.pdf`:

@@ -373,7 +373,18 @@ func main() {
 	log.Printf("  Defenses: RateLimit=%v (RPS=%.1f) | InputValidation=%v (range=[%.1f, %.1f]) | ShellshockDefense=%v | Blocklist=%s\n",
 		enableRateLimit, rateLimitRPS, enableInputValidation, minTempAllowed, maxTempAllowed, enableShellshockDefense, blockedDevicesList)
 
-	if err := http.ListenAndServe(":"+port, loggingHandler); err != nil {
+	// Production HTTP Server hardening against Slowloris and connection-flooding DDoS attacks
+	server := &http.Server{
+		Addr:              ":" + port,
+		Handler:           loggingHandler,
+		ReadHeaderTimeout: 3 * time.Second,
+		ReadTimeout:       5 * time.Second,
+		WriteTimeout:      10 * time.Second,
+		IdleTimeout:       15 * time.Second,
+		MaxHeaderBytes:    1 << 20, // 1MB header limit
+	}
+
+	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("Server failed: %v", err)
 	}
 }
