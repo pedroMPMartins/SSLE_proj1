@@ -110,6 +110,29 @@ bash run.sh
 ```
 
 
+## Automated Test Suite
+
+An extensive, fully automated test runner complying with non-disruptive isolation, reproducibility, fault tolerance, and human-readable reporting:
+
+```bash
+# Run the complete test suite
+./test_runner.sh
+```
+
+### Testing Infrastructure Architecture:
+1. **Non-Disruptive Isolation:**
+   - Dedicated high-range ports (`15050`, `15001-15003`, `15000`, `18000-18001`) preventing interference with any active dev instances on default ports (`5050`, `5001`, `8000`, etc.).
+   - Temporary SQLite database and isolated build output in `/tmp/ssle_test_XXXXXX`.
+2. **Reproducibility & Idempotency:**
+   - Pre-flight port cleanup.
+   - Automatic `trap cleanup EXIT INT TERM` guarantees teardown of background test processes and removal of test workspaces.
+3. **Fault Tolerance & CI Compliance:**
+   - Runs all 7 validation phases regardless of individual failures.
+   - Records errors in `FAILED_STEPS` array and exits with code `0` on success, or `1` on failure for CI/CD pipelines.
+4. **Human-Readable Output:**
+   - Color-coded prefixes: `[INFO]`, `[SUCCESS]`, `[WARNING]`, `[ERROR]`.
+
+
 ## Wazuh
 
 Wazuh credentials inside the wazuh-container:

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"simple_soa/internal/function"
+	"strings"
 
 	_ "modernc.org/sqlite"
 )
@@ -18,12 +19,16 @@ var (
 	serviceURL  = os.Getenv("SERVICE_URL")
 	registryURL = os.Getenv("REGISTRY_URL")
 	port        = os.Getenv("PORT")
+	dbPath      = os.Getenv("DB_PATH")
 )
 
 func initDB() {
+	if dbPath == "" {
+		dbPath = "temp_data.db"
+	}
 	var err error
 	// Open connection to sqlite database file
-	db, err = sql.Open("sqlite", "temp_data.db")
+	db, err = sql.Open("sqlite", dbPath)
 	if err != nil {
 		log.Fatalf("Failed to open database: %v", err)
 	}
@@ -58,14 +63,19 @@ func main() {
 		serviceURL = "http://localhost:" + port
 	}
 	if registryURL == "" {
-		registryURL = "http://localhost:5050/register"
+		registryURL = "http://localhost:5050"
 	}
 
 	initDB()
 	defer db.Close()
 
+	regEndpoint := registryURL
+	if !strings.HasSuffix(regEndpoint, "/register") {
+		regEndpoint = strings.TrimSuffix(regEndpoint, "/") + "/register"
+	}
+
 	// Register with service registry in background retry loop
-	go function.RegisterWithRetry(serviceID, serviceKind, serviceURL, registryURL)
+	go function.RegisterWithRetry(serviceID, serviceKind, serviceURL, regEndpoint)
 
 	mux := http.NewServeMux()
 
