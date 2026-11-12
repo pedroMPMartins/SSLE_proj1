@@ -668,6 +668,89 @@ else
     FAILED_STEPS+=("Guide 5 DDoS Benchmark Runner")
 fi
 
+# 6.8 Guide 5 Threat 3: Route & Signals Hijacking / MitM Tampering Defense
+log_info "Testing Guide 5 Threat 3: Route & Signals Hijacking / MitM Tampering Defense..."
+HMAC_PORT="15011"
+HMAC_SECRET="ssle-runner-secret-key-123"
+HMAC_LOG="${TEST_TMP_DIR}/hmac_ingestion_access.log"
+
+PORT="${HMAC_PORT}" \
+SERVICE_URL="http://127.0.0.1:${HMAC_PORT}" \
+REGISTRY_URL="${TEST_REGISTRY_URL}" \
+STORAGE_URL="${TEST_STORAGE_URL}" \
+ACCESS_LOG_PATH="${HMAC_LOG}" \
+ENABLE_HMAC_VERIFICATION="true" \
+HMAC_SECRET_KEY="${HMAC_SECRET}" \
+MAX_TIMESTAMP_DRIFT_SECS="10" \
+"${TEST_BIN_DIR}/ingestion" > "${TEST_TMP_DIR}/hmac_ingestion.log" 2>&1 &
+HMAC_PID=$!
+TEST_PIDS+=($HMAC_PID)
+
+# Wait for HMAC ingestion instance to be ready
+HMAC_READY=false
+for _ in {1..10}; do
+    if curl -s -f "http://127.0.0.1:${HMAC_PORT}/health" | grep -q '"UP"'; then
+        HMAC_READY=true
+        break
+    fi
+    sleep 0.5
+done
+
+if [ "$HMAC_READY" = true ]; then
+    # 1. Authentic request signed with HMAC-SHA256
+    SIG_OUTPUT=$(python3 -c "import hmac, hashlib, time; ts=str(int(time.time())); body=b'{\"device_id\":\"sensor-edge-01\",\"temperature\":21.5}'; sig=hmac.new(b'${HMAC_SECRET}', ts.encode()+b'.'+body, hashlib.sha256).hexdigest(); print(f'{ts} {sig}')")
+    REQ_TS=$(echo "$SIG_OUTPUT" | cut -d' ' -f1)
+    REQ_SIG=$(echo "$SIG_OUTPUT" | cut -d' ' -f2)
+
+    VALID_AUTH_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "http://127.0.0.1:${HMAC_PORT}/ingest" \
+        -H "Content-Type: application/json" \
+        -H "X-Signature: ${REQ_SIG}" \
+        -H "X-Signature-Timestamp: ${REQ_TS}" \
+        -d '{"device_id":"sensor-edge-01","temperature":21.5}')
+
+    if [ "$VALID_AUTH_CODE" -eq 200 ]; then
+        log_success "HMAC Verification: Authentic signed request accepted (HTTP 200)."
+    else
+        log_error "HMAC Verification failed for valid signature! Got HTTP $VALID_AUTH_CODE"
+        OVERALL_SUCCESS=false
+        FAILED_STEPS+=("Guide 5 HMAC Verification (Authentic Request)")
+    fi
+
+    # 2. MitM Tampered request: attacker altered temperature in transit
+    TAMPER_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "http://127.0.0.1:${HMAC_PORT}/ingest" \
+        -H "Content-Type: application/json" \
+        -H "X-Signature: ${REQ_SIG}" \
+        -H "X-Signature-Timestamp: ${REQ_TS}" \
+        -d '{"device_id":"sensor-edge-01","temperature":99.9}')
+
+    if [ "$TAMPER_CODE" -eq 401 ]; then
+        log_success "MitM Tampering Blocked: Ingestion rejected payload modified in transit (HTTP 401)."
+    else
+        log_error "MitM Tampering defense failed! Expected HTTP 401, got HTTP $TAMPER_CODE"
+        OVERALL_SUCCESS=false
+        FAILED_STEPS+=("Guide 5 MitM Tampering Defense (401)")
+    fi
+
+    # 3. Attacker tool running in tamper mode
+    "${TEST_BIN_DIR}/attacker" -target "http://127.0.0.1:${HMAC_PORT}" -mode tamper -concurrency 1 -duration 1 > /dev/null 2>&1 || true
+
+    # 4. Check that 401 Unauthorized access log entry was written for Wazuh Rule 100104
+    if [ -f "$HMAC_LOG" ] && grep -q 'POST /ingest HTTP/1.1" 401' "$HMAC_LOG"; then
+        log_success "Wazuh SIEM Ingestion: Access log captured HTTP 401 MitM tampering event for Rule 100104."
+    else
+        log_error "Access log missing HTTP 401 entry for MitM tampering!"
+        OVERALL_SUCCESS=false
+        FAILED_STEPS+=("Guide 5 Wazuh MitM Logging")
+    fi
+
+    kill "$HMAC_PID" 2>/dev/null || true
+else
+    log_error "Failed to initialize HMAC ingestion instance!"
+    OVERALL_SUCCESS=false
+    FAILED_STEPS+=("Guide 5 HMAC Ingestion Initialization")
+fi
+
+
 
 # ------------------------------------------------------------------------------
 # Step 7: Monitoring & Exporters Validation

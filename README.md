@@ -194,3 +194,40 @@ Comprehensive analysis, hardening strategies, and experimental worksheets are do
 ```
 
 
+## Guide 5: Route & Signals Hijacking / Man-in-the-Middle (MitM) Prevention
+
+Comprehensive analysis, network topology, and cryptographic verification details are documented in [`docs/guide5_mitm_and_cryptography.md`](docs/guide5_mitm_and_cryptography.md).
+
+### 1. Generate TLS & mTLS Certificates
+```bash
+# Generates Root CA, Ingestion Server certs (with SANs), mTLS client certs, and rogue MitM CA
+./scripts/generate_certs.sh
+```
+
+### 2. Deploy Dual-Subnet Interception Topology (Incus)
+```bash
+# Creates ssle-net-client (10.20.1.0/24), ssle-net-server (10.20.2.0/24) and ssle-interceptor router
+./scripts/deploy_mitm_topology.sh
+```
+
+### 3. Start Ingestion with HMAC Verification Enabled
+```bash
+ENABLE_HMAC_VERIFICATION=true \
+HMAC_SECRET_KEY="your-shared-secret-key-32bytes-long" \
+MAX_TIMESTAMP_DRIFT_SECS=10 \
+./bin/ingestion
+```
+
+### 4. Simulate MitM In-Flight Tampering & Attacks
+```bash
+# Attacker modifies sensor telemetry payloads in transit (Ingestion responds HTTP 401)
+./bin/attacker -target http://localhost:5001 -mode tamper -concurrency 1 -duration 5
+```
+
+### 5. Teardown Interception Topology
+```bash
+./scripts/cleanup_mitm_topology.sh
+```
+
+
+

@@ -29,6 +29,9 @@ var (
 	enableRateLimit          = parseBoolEnv("ENABLE_RATE_LIMIT", false)
 	enableInputValidation    = parseBoolEnv("ENABLE_INPUT_VALIDATION", false)
 	enableShellshockDefense  = parseBoolEnv("ENABLE_SHELLSHOCK_DEFENSE", true) // Default defense-in-depth enabled
+	enableHMACVerification   = parseBoolEnv("ENABLE_HMAC_VERIFICATION", false) // Guide 5 Threat 3: MitM & Tamper Defense
+	hmacSecretKey            = getEnv("HMAC_SECRET_KEY", "ssle-tamper-defense-secret-key-2026")
+	maxTimestampDriftSecs    = parseFloatEnv("MAX_TIMESTAMP_DRIFT_SECS", 60.0)
 	blockedDevicesList       = os.Getenv("BLOCKED_DEVICES")
 	minTempAllowed           = parseFloatEnv("MIN_TEMP", -50.0)
 	maxTempAllowed           = parseFloatEnv("MAX_TEMP", 100.0)
@@ -247,6 +250,7 @@ func main() {
 			"rate_limit_enabled":       enableRateLimit,
 			"input_validation_enabled": enableInputValidation,
 			"shellshock_defense":       enableShellshockDefense,
+			"hmac_verification":        enableHMACVerification,
 			"access_log_path":          accessLogPath,
 			"blocked_devices_count":    len(strings.Split(blockedDevicesList, ",")),
 		})
@@ -286,6 +290,22 @@ func main() {
 		if err != nil || len(bodyBytes) == 0 {
 			function.RespondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid or empty request body"})
 			return
+		}
+
+		// Defense 4: Cryptographic Message Integrity & Replay Protection (Threat 3 - MitM Prevention)
+		if enableHMACVerification {
+			tsHeader := r.Header.Get("X-Signature-Timestamp")
+			sigHeader := r.Header.Get("X-Signature")
+
+			valid, reason := function.VerifyPayload([]byte(hmacSecretKey), tsHeader, sigHeader, bodyBytes, time.Duration(maxTimestampDriftSecs)*time.Second)
+			if !valid {
+				log.Printf("[SECURITY ALERT - Threat 3] MitM tampering or invalid signature detected from IP %s! Reason: %s\n",
+					clientIP, reason)
+				function.RespondJSON(w, http.StatusUnauthorized, map[string]string{
+					"error": fmt.Sprintf("Cryptographic integrity verification failed: %s", reason),
+				})
+				return
+			}
 		}
 
 		// Parse reading for inspection

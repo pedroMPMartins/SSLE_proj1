@@ -15,15 +15,16 @@ import (
 )
 
 var (
-	deviceID    = function.GenerateRandomID()
-	deviceKind  = "temperature"
-	registryURL = os.Getenv("REGISTRY_URL")
-	ingestURL   = os.Getenv("INGEST_URL")
-	port        = os.Getenv("PORT")
-	serviceURL  = os.Getenv("SERVICE_URL")
+	deviceID      = function.GenerateRandomID()
+	deviceKind    = "temperature"
+	registryURL   = os.Getenv("REGISTRY_URL")
+	ingestURL     = os.Getenv("INGEST_URL")
+	port          = os.Getenv("PORT")
+	serviceURL    = os.Getenv("SERVICE_URL")
+	hmacSecretKey = os.Getenv("HMAC_SECRET_KEY")
 
-	stateMu     sync.RWMutex
-	lastTemp    float64
+	stateMu      sync.RWMutex
+	lastTemp     float64
 	readingsSent uint64
 )
 
@@ -59,7 +60,23 @@ func sendTemp() {
 			continue
 		}
 
-		resp, err := http.Post(endpoint, "application/json", bytes.NewBuffer(jsonBody))
+		req, err := http.NewRequest(http.MethodPost, endpoint, bytes.NewBuffer(jsonBody))
+		if err != nil {
+			log.Printf("Error creating request: %v\n", err)
+			time.Sleep(5 * time.Second)
+			continue
+		}
+		req.Header.Set("Content-Type", "application/json")
+
+		// Cryptographic HMAC message signing (MitM prevention)
+		if hmacSecretKey != "" {
+			tsStr, sigHex := function.SignPayload([]byte(hmacSecretKey), time.Now(), jsonBody)
+			req.Header.Set("X-Signature-Timestamp", tsStr)
+			req.Header.Set("X-Signature", sigHex)
+		}
+
+		client := &http.Client{Timeout: 5 * time.Second}
+		resp, err := client.Do(req)
 		if err != nil {
 			log.Printf("Error sending data to %s: %v\n", endpoint, err)
 		} else {

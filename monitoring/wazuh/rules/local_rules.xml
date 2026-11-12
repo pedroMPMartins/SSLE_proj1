@@ -50,4 +50,17 @@
     </mitre>
   </rule>
 
+  <!-- Rule 100104: Route & Signals Hijacking / MitM Tampering Detected (401 Unauthorized on Ingest) -->
+  <rule id="100104" level="11">
+    <if_group>web|access_log</if_group>
+    <match>POST /ingest</match>
+    <id>401</id>
+    <description>SSLE SIEM Alert: Route/Signals Hijacking (MitM) or Cryptographic Signature Tampering detected</description>
+    <mitre>
+      <id>T1557</id>
+      <id>T1565</id>
+    </mitre>
+    <group>mitm,tampering,integrity</group>
+  </rule>
+
 </group>

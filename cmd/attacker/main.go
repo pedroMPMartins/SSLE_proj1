@@ -10,6 +10,7 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
+	"simple_soa/internal/function"
 	"sort"
 	"strings"
 	"sync"
@@ -241,6 +242,8 @@ func runWorker(workerID int, cfg Config, stopCh chan struct{}) {
 			attackShellshock(cfg)
 		case "malicious_ip":
 			attackMaliciousIP(cfg)
+		case "mitm", "tamper":
+			attackMitMTamper(cfg)
 		case "flood", "dos", "ddos", "benchmark":
 			attackFlood(cfg)
 		default:
@@ -434,3 +437,46 @@ func attackMaliciousIP(cfg Config) {
 		totalErrors.Add(1)
 	}
 }
+
+// attackMitMTamper: Simulates active MitM adversary intercepting and modifying payload in transit
+func attackMitMTamper(cfg Config) {
+	endpoint := strings.TrimSuffix(cfg.TargetURL, "/") + "/ingest"
+	secretKey := []byte(getEnv("HMAC_SECRET_KEY", "ssle-tamper-defense-secret-key-2026"))
+
+	// 1. Original legitimate payload signed by client
+	originalPayload := []byte(`{"device_id":"sensor-10","temperature":22.0}`)
+	tsStr, sigHex := function.SignPayload(secretKey, time.Now(), originalPayload)
+
+	// 2. Active MitM interceptor alters payload in transit without secret key
+	tamperedPayload := []byte(`{"device_id":"sensor-10","temperature":95.5}`)
+
+	req, err := http.NewRequest(http.MethodPost, endpoint, bytes.NewBuffer(tamperedPayload))
+	if err != nil {
+		totalErrors.Add(1)
+		return
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Signature-Timestamp", tsStr)
+	req.Header.Set("X-Signature", sigHex) // Original signature over un-tampered body
+
+	start := time.Now()
+	resp, err := client.Do(req)
+	durationMs := float64(time.Since(start).Microseconds()) / 1000.0
+	recordLatency(durationMs)
+
+	totalRequests.Add(1)
+	if err != nil {
+		totalErrors.Add(1)
+		return
+	}
+	defer resp.Body.Close()
+	io.Copy(io.Discard, resp.Body)
+
+	if resp.StatusCode == http.StatusUnauthorized {
+		blocked403.Add(1) // Successfully caught and blocked by HMAC defense
+	} else if resp.StatusCode >= 400 {
+		totalErrors.Add(1)
+	}
+}
+

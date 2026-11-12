@@ -131,7 +131,7 @@ The following components currently exist in `incremental_system` but represent e
 
 ---
 
-### Gap 4: Guide 5 — Route & Signals Hijacking / Man-in-the-Middle (MitM)
+### Gap 4: Guide 5 — Route & Signals Hijacking / Man-in-the-Middle (MitM) — **STATUS: COMPLETED [x]**
 * **What Guide 5 & Syllabus Mandate:**
   * Isolated network topology: Client and Target placed on separate private subnets with traffic forced through an Interceptor.
   * Interceptor configured with Linux IP forwarding (`net.ipv4.ip_forward=1`) and disabled ICMP redirects.
@@ -141,14 +141,26 @@ The following components currently exist in `incremental_system` but represent e
     ```
   * Transparent proxying using `mitmproxy --mode transparent --listen-port 8080`.
   * Traffic interception verification: client sends requests without explicit proxy configuration (`curl --noproxy "*"`), interceptor inspects and logs payloads.
-  * Optional HTTPS extension: showing TLS certificate validation failure on untrusted proxy vs. custom lab CA installation.
-* **Current State:**
-  * Completely unaddressed in `incremental_system`.
-* **What is Needed:**
-  1. An Incus network provisioning script creating dual isolated bridges (e.g. `ssle-net-client`, `ssle-net-server`) and routing container `ssle-interceptor`.
-  2. Automated script to configure `iptables` redirection rules and start `mitmproxy`.
-  3. Verification tests demonstrating transparent interception of sensor telemetry or API requests.
-  4. Cryptographic mitigation (e.g., mTLS between microservices, HMAC payload signing) demonstrating how the SOA prevents eavesdropping or tampering even when a network interceptor is active.
+  * Cryptographic prevention & authentication demonstrating how the SOA prevents eavesdropping, payload tampering, or replay attacks when a network interceptor is active.
+* **Implemented Solution:**
+  * **Dual-Subnet Incus Interception Topology (`scripts/deploy_mitm_topology.sh` & `cleanup_mitm_topology.sh`):**
+    Automates the provisioning of two isolated Incus network bridges (`ssle-net-client`: `10.20.1.0/24` and `ssle-net-server`: `10.20.2.0/24`) interconnected by a dual-homed router container (`ssle-interceptor`) with kernel IP forwarding (`net.ipv4.ip_forward=1`), `iptables` NAT PREROUTING redirection to port 8080, and `mitmproxy`.
+  * **Cryptographic Payload Signing & Integrity Library (`internal/function/crypto.go`):**
+    Implemented `SignPayload()` and `VerifyPayload()` utilizing HMAC-SHA256 over canonical timestamps and request bodies. Enforces constant-time MAC verification (`hmac.Equal()`) to prevent timing side-channels, and timestamp drift tolerance (`MAX_TIMESTAMP_DRIFT_SECS`) to mitigate replay attacks.
+  * **Ingestion Gateway Tamper Rejection (`cmd/ingestion/main.go`):**
+    Added Defense 4 in `/ingest` validating `X-Signature` and `X-Signature-Timestamp` headers. Tampered or replayed requests are rejected with `HTTP 401 Unauthorized` and trigger high-severity SIEM audit logs.
+  * **Sensor Telemetry HMAC Signing (`cmd/temperature/main.go`):**
+    Automates calculation and transmission of `X-Signature-Timestamp` and `X-Signature` HMAC headers for all outgoing telemetry when `HMAC_SECRET_KEY` is provided.
+  * **Adversary MitM Tampering Emulation (`cmd/attacker/main.go`):**
+    Added `-mode mitm` and `-mode tamper` simulating an active adversary modifying in-flight sensor payloads.
+  * **Wazuh SIEM Detection Rule 100104 (`monitoring/wazuh/rules/local_rules.xml`):**
+    Added custom detection rule `100104` (Level 11) for MITRE ATT&CK T1557/T1565 (Route/Signals Hijacking & Data Manipulation), correlating `POST /ingest` 401 errors with Active Response firewall isolation.
+  * **Automated TLS & mTLS Certificate Generation (`scripts/generate_certs.sh`):**
+    Generates 4096-bit Root CA, Ingestion Server certificates with Subject Alternative Names (SANs), client mTLS certificates, and rogue CA certificates to verify untrusted interceptor rejection.
+  * **Automated Test Suite Integration (`tests/` & `test_runner.sh`):**
+    Added unit & integration tests in `TestHMACPayloadSigningAndTamperDefense` and test runner Step 6.8 verifying authentic acceptance (200), in-flight tamper rejection (401), replay rejection (401), and Wazuh access log capture.
+  * **Comprehensive Architecture Documentation (`docs/guide5_mitm_and_cryptography.md`):**
+    Full documentation covering threat modeling, network routing, HMAC-SHA256 mathematical canonicalization, mTLS certificates, and FCAPS fault correlation.
 
 ---
 
@@ -216,10 +228,10 @@ To integrate seamlessly with Wazuh, Incus multi-container networking, and hierar
 | Microservice | Location | Required Adjustment |
 | :--- | :--- | :--- |
 | **Registry** | `cmd/registry/main.go` | **[DONE]** Updated `models.Service` with location hierarchy fields (`Region`, `Zone`, `PhysicalHost`, `LogicalEnv`, `FQSN`). Added query filtering and rapid incident localization (`GET /services/locate/{id}`). |
-| **Ingestion** | `cmd/ingestion/main.go` | **[DONE]** Output structured Apache Combined access logs to `/var/log/ssle/ingestion_access.log` for Wazuh agent scraping. Added application-level Shellshock detection and blocking. |
-| **Temperature** | `cmd/temperature/main.go` | • Support registering with hierarchical name tags (e.g. `region="pt-north", zone="lab-01"`). |
-| **Attacker** | `cmd/attacker/main.go` | **[DONE]** Added `-mode shellshock` for CVE-2014-6271 exploit testing and `-mode malicious_ip` for AlienVault CDB reputation testing. |
-| **Deploy Scripts** | `deploy_incus.sh` | **[DONE]** Configured `/var/log/ssle` log directories and environment variables for Wazuh agent access on Incus containers. |
+| **Ingestion** | `cmd/ingestion/main.go` | **[DONE]** Output structured Apache Combined access logs to `/var/log/ssle/ingestion_access.log` for Wazuh agent scraping. Added application-level Shellshock detection and blocking. Added HMAC-SHA256 signature verification (`X-Signature` and `X-Signature-Timestamp`) with replay window validation (Defense 4). |
+| **Temperature** | `cmd/temperature/main.go` | **[DONE]** Added automatic HMAC-SHA256 telemetry signing (`X-Signature`, `X-Signature-Timestamp`) to prevent in-flight tampering. |
+| **Attacker** | `cmd/attacker/main.go` | **[DONE]** Added `-mode shellshock`, `-mode malicious_ip`, `-mode benchmark`, and `-mode mitm` / `-mode tamper` for active payload modification emulation. |
+| **Deploy Scripts** | `deploy_incus.sh` | **[DONE]** Configured `/var/log/ssle` log directories and environment variables for Wazuh agent access on Incus containers. Added `scripts/deploy_mitm_topology.sh` and `scripts/generate_certs.sh`. |
 
 ---
 
@@ -248,11 +260,15 @@ To integrate seamlessly with Wazuh, Incus multi-container networking, and hierar
 3. **[DONE]** Run baseline (1 client, c=1) vs. paired concurrent run (2 clients, c=2..10) via automated benchmark runner `scripts/run_ddos_benchmark.sh`.
 4. **[DONE]** Record performance worksheet metrics (throughput, median, p95 latency, error count, and Prometheus correlation in `docs/guide5_ddos_and_hardening.md`).
 
-### Phase 4: Route Hijacking & MitM — Threat 3 (Guide 5)
-1. Write `scripts/deploy_mitm_topology.sh` to provision dual Incus subnets and an interceptor container.
-2. Configure interceptor `iptables` PREROUTING redirect to `mitmproxy` (port 8080).
-3. Demonstrate transparent interception of unencrypted HTTP traffic.
-4. Implement and demonstrate mitigation: mutual TLS (mTLS) or cryptographic message signatures so intercepted traffic cannot be read or forged.
+### Phase 4: Route Hijacking & MitM — Threat 3 (Guide 5) — **[COMPLETED]**
+1. **[DONE]** Write `scripts/deploy_mitm_topology.sh` and `cleanup_mitm_topology.sh` to provision dual Incus subnets (`ssle-net-client`, `ssle-net-server`) and router container `ssle-interceptor`.
+2. **[DONE]** Configure interceptor `iptables` PREROUTING redirect to `mitmproxy` (port 8080) and Linux IP forwarding.
+3. **[DONE]** Implement cryptographic message authentication (`internal/function/crypto.go`): HMAC-SHA256 signing, timestamp drift replay protection, and constant-time verification.
+4. **[DONE]** Update `cmd/ingestion` to enforce HMAC verification and reject tampered or replayed requests with `HTTP 401 Unauthorized`.
+5. **[DONE]** Update `cmd/temperature` to sign telemetry payloads and `cmd/attacker` with `-mode mitm` / `-mode tamper`.
+6. **[DONE]** Add Wazuh detection rule `100104` for MitM tampering and automated `scripts/generate_certs.sh` for TLS/mTLS.
+7. **[DONE]** Add automated test coverage in `tests/` (`TestHMACPayloadSigningAndTamperDefense`) and `test_runner.sh` (Step 6.8).
+8. **[DONE]** Document complete architecture and workflow in `docs/guide5_mitm_and_cryptography.md`.
 
 ### Phase 5: CI Testing Infrastructure Update — **[COMPLETED]**
 1. **[DONE]** Extended `test_runner.sh` to validate hierarchical registry queries, location matching, negative matching, and rapid incident localization.

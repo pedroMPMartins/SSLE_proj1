@@ -699,5 +699,140 @@ func TestAnalyticsMathAndEmptyData(t *testing.T) {
 	}
 }
 
+// TestHMACPayloadSigningAndTamperDefense tests Guide 5 Threat 3: Route & Signals Hijacking / MitM Prevention
+func TestHMACPayloadSigningAndTamperDefense(t *testing.T) {
+	secretKey := []byte("ssle-test-secret-key-32bytes-long!")
+	maxDrift := 10 * time.Second
+
+	// 1. Unit Tests for cryptographic signing and verification functions
+	originalBody := []byte(`{"device_id":"sensor-edge-01","temperature":23.5}`)
+	now := time.Now()
+
+	tsStr, sig := function.SignPayload(secretKey, now, originalBody)
+	if sig == "" || tsStr == "" {
+		t.Fatal("SignPayload returned empty signature or timestamp")
+	}
+
+	// 1a. Happy path: untampered body & fresh timestamp
+	valid, reason := function.VerifyPayload(secretKey, tsStr, sig, originalBody, maxDrift)
+	if !valid {
+		t.Fatalf("VerifyPayload failed on authentic payload: %s", reason)
+	}
+
+	// 1b. Unhappy path: MitM adversary tampers with temperature in transit
+	tamperedBody := []byte(`{"device_id":"sensor-edge-01","temperature":999.9}`)
+	valid, reason = function.VerifyPayload(secretKey, tsStr, sig, tamperedBody, maxDrift)
+	if valid {
+		t.Fatal("Expected VerifyPayload to fail on tampered payload, but it succeeded")
+	}
+	if !strings.Contains(reason, "signature mismatch") {
+		t.Errorf("Expected signature mismatch error, got: %s", reason)
+	}
+
+	// 1c. Unhappy path: Replay attack (timestamp older than drift limit)
+	oldTime := now.Add(-60 * time.Second)
+	oldTsStr, oldSig := function.SignPayload(secretKey, oldTime, originalBody)
+	valid, reason = function.VerifyPayload(secretKey, oldTsStr, oldSig, originalBody, maxDrift)
+	if valid {
+		t.Fatal("Expected VerifyPayload to fail on expired timestamp (replay attack), but it succeeded")
+	}
+	if !strings.Contains(reason, "timestamp drift exceeded") {
+		t.Errorf("Expected drift exceeded error, got: %s", reason)
+	}
+
+	// 1d. Unhappy path: Invalid signature hex format
+	valid, reason = function.VerifyPayload(secretKey, tsStr, "invalid-hex-non-signature", originalBody, maxDrift)
+	if valid {
+		t.Fatal("Expected VerifyPayload to fail on invalid signature hex, but it succeeded")
+	}
+
+	// 2. Integration Test: HTTP Ingestion Endpoint under MitM attack conditions
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /ingest", func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			function.RespondJSON(w, http.StatusBadRequest, map[string]string{"error": "Failed to read body"})
+			return
+		}
+
+		sigHeader := r.Header.Get("X-Signature")
+		tsHeader := r.Header.Get("X-Signature-Timestamp")
+		if sigHeader == "" || tsHeader == "" {
+			function.RespondJSON(w, http.StatusUnauthorized, map[string]string{"error": "Missing HMAC signature headers"})
+			return
+		}
+
+		valid, verifyErr := function.VerifyPayload(secretKey, tsHeader, sigHeader, body, maxDrift)
+		if !valid {
+			function.RespondJSON(w, http.StatusUnauthorized, map[string]string{
+				"error": "MitM tampering or invalid signature detected: " + verifyErr,
+			})
+			return
+		}
+
+		function.RespondJSON(w, http.StatusOK, map[string]string{"status": "accepted"})
+	})
+
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	// Scenario A: Legitimate client request with valid HMAC
+	clientTsStr, clientSig := function.SignPayload(secretKey, time.Now(), originalBody)
+
+	reqA, _ := http.NewRequest("POST", server.URL+"/ingest", bytes.NewReader(originalBody))
+	reqA.Header.Set("Content-Type", "application/json")
+	reqA.Header.Set("X-Signature", clientSig)
+	reqA.Header.Set("X-Signature-Timestamp", clientTsStr)
+
+	respA, err := http.DefaultClient.Do(reqA)
+	if err != nil || respA.StatusCode != http.StatusOK {
+		t.Fatalf("Legitimate signed request failed with status: %v, err: %v", respA.StatusCode, err)
+	}
+
+	// Scenario B: Active MitM interceptor alters payload body
+	tamperedPayload := []byte(`{"device_id":"sensor-edge-01","temperature":100.0}`)
+	reqB, _ := http.NewRequest("POST", server.URL+"/ingest", bytes.NewReader(tamperedPayload))
+	reqB.Header.Set("Content-Type", "application/json")
+	reqB.Header.Set("X-Signature", clientSig) // original signature
+	reqB.Header.Set("X-Signature-Timestamp", clientTsStr)
+
+	respB, err := http.DefaultClient.Do(reqB)
+	if err != nil {
+		t.Fatalf("MitM request error: %v", err)
+	}
+	if respB.StatusCode != http.StatusUnauthorized {
+		t.Errorf("Expected HTTP 401 Unauthorized for tampered payload, got %d", respB.StatusCode)
+	}
+
+	// Scenario C: Attacker replays old captured packet
+	staleTime := time.Now().Add(-100 * time.Second)
+	staleTsStr, staleSig := function.SignPayload(secretKey, staleTime, originalBody)
+	reqC, _ := http.NewRequest("POST", server.URL+"/ingest", bytes.NewReader(originalBody))
+	reqC.Header.Set("Content-Type", "application/json")
+	reqC.Header.Set("X-Signature", staleSig)
+	reqC.Header.Set("X-Signature-Timestamp", staleTsStr)
+
+	respC, err := http.DefaultClient.Do(reqC)
+	if err != nil {
+		t.Fatalf("Replay request error: %v", err)
+	}
+	if respC.StatusCode != http.StatusUnauthorized {
+		t.Errorf("Expected HTTP 401 Unauthorized for replayed packet, got %d", respC.StatusCode)
+	}
+
+	// Scenario D: Unsigned request when HMAC is enforced
+	reqD, _ := http.NewRequest("POST", server.URL+"/ingest", bytes.NewReader(originalBody))
+	reqD.Header.Set("Content-Type", "application/json")
+
+	respD, err := http.DefaultClient.Do(reqD)
+	if err != nil {
+		t.Fatalf("Unsigned request error: %v", err)
+	}
+	if respD.StatusCode != http.StatusUnauthorized {
+		t.Errorf("Expected HTTP 401 Unauthorized for missing signature, got %d", respD.StatusCode)
+	}
+}
+
+
 
 
