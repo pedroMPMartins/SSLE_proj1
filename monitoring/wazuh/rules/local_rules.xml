@@ -30,13 +30,14 @@
   </rule>
 
   <!-- Rule 100102: High-Rate HTTP Flood / DoS Alert -->
-  <rule id="100102" level="8" frequency="25" timeframe="5">
-    <if_matched_sid>100001</if_matched_sid>
+  <rule id="100102" level="8" frequency="20" timeframe="5">
+    <if_group>web|access_log</if_group>
     <same_source_ip />
     <description>SSLE SIEM Alert: High-rate HTTP request flood detected from same IP</description>
     <mitre>
       <id>T1498</id>
     </mitre>
+    <group>dos,flood,botnet</group>
   </rule>
 
   <!-- Rule 100103: Unauthorized Service Registry Tampering (403 Forbidden) -->

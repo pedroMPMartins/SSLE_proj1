@@ -750,6 +750,19 @@ else
     FAILED_STEPS+=("Guide 5 HMAC Ingestion Initialization")
 fi
 
+# 6.9 Syllabus: Three Threats Triad Verification
+log_info "Testing Syllabus Three Threats Demonstration Harness..."
+THREE_THREATS_LOG="${TEST_TMP_DIR}/three_threats_demonstrator.log"
+if bash scripts/demonstrate_three_threats.sh "${TEST_INGESTION_URL}" "${TEST_REGISTRY_URL}" > "$THREE_THREATS_LOG" 2>&1; then
+    log_success "Three Threats Demonstrator: Executed validation across all 3 syllabus threats."
+else
+    log_error "Failed to execute Three Threats demonstration script! Output:"
+    cat "$THREE_THREATS_LOG" 2>/dev/null || true
+    OVERALL_SUCCESS=false
+    FAILED_STEPS+=("Three Threats Demonstrator")
+fi
+
+
 
 
 # ------------------------------------------------------------------------------

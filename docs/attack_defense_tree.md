@@ -32,55 +32,47 @@ flowchart TD
     classDef subattack fill:#F0AD4E,stroke:#333,stroke-width:1px,color:#000;
     classDef defense fill:#5CB85C,stroke:#333,stroke-width:1px,color:#fff;
     classDef monitor fill:#0275D8,stroke:#333,stroke-width:1px,color:#fff;
+    classDef siem fill:#6f42c1,stroke:#333,stroke-width:1px,color:#fff;
 
     %% Root Goal
-    ROOT["Root: Compromise SOA Infrastructure & Data Integrity"]:::goal
+    ROOT["Root: Compromise Distributed SOA & Telemetry Fabric"]:::goal
 
-    %% Primary Attack Vectors
-    A1["A1: Denial of Service - DoS / Availability Loss"]:::attack
-    A2["A2: Data Poisoning & Integrity Tampering"]:::attack
-    A3["A3: Service Hijacking & Man-in-the-Middle - MitM"]:::attack
-    A4["A4: Unauthorized Reconnaissance & Data Leakage"]:::attack
+    %% Primary Attack Vectors (Three Syllabus Threats)
+    T1["Threat 1: Web Exploitation & Malicious Payloads<br>(CVE-2014-6271 Shellshock & Threat Intel)"]:::attack
+    T2["Threat 2: Massive Denial-of-Service Disruptions<br>(Botnets & Volumetric Flooding)"]:::attack
+    T3["Threat 3: Route & Signals Hijacking<br>(Transparent Man-in-the-Middle & Tampering)"]:::attack
 
-    ROOT --> A1
-    ROOT --> A2
-    ROOT --> A3
-    ROOT --> A4
+    ROOT --> T1
+    ROOT --> T2
+    ROOT --> T3
 
-    %% Sub-attacks & Defenses for A1 (DoS)
-    A1 --> A11["A1.1: Flood Ingestion Service - High-rate HTTP POST"]:::subattack
-    A11 -.-> D11["D1.1: Rate Limiting - Token Bucket / IP Throttling"]:::defense
-    A11 -.-> M11["M1.1: Prometheus Monitoring - Request Rate / Latency Spikes"]:::monitor
+    %% Sub-attacks & Defenses for Threat 1 (Exploitation & Reputation)
+    T1 --> T11["T1.1: HTTP Header Command Injection<br>(User-Agent: () { :; }; ...)"]:::subattack
+    T11 -.-> D11["D1.1: Application Header Sanitization<br>(Drop Shellshock with HTTP 403)"]:::defense
+    T11 -.-> S11["S1.1: Wazuh SIEM Rule 100100<br>(PCRE Pattern Match in Access Log)"]:::siem
+    S11 -.-> AR1["AR1: Active Response: firewall-drop<br>(60s automated IP quarantine)"]:::defense
 
-    A1 --> A12["A1.2: Resource Exhaustion on Storage - Disk Flooding"]:::subattack
-    A12 -.-> D12["D1.2: Storage Quotas, Retention Limits & Payload Size Capping"]:::defense
-    A12 -.-> M12["M1.2: Prometheus Exporter - Disk Usage & Memory Gauge"]:::monitor
+    T1 --> T12["T1.2: Interaction from Blacklisted IP<br>(AlienVault Botnet / Scanner)"]:::subattack
+    T12 -.-> S12["S1.2: Wazuh SIEM Rule 100101<br>(AlienVault Reputation CDB Lookup)"]:::siem
+    S12 -.-> AR1
 
-    A1 --> A13["A1.3: Service Registry Starvation / Registration Flood"]:::subattack
-    A13 -.-> D13["D1.3: Connection Timeouts & Registry Ingress Filtering"]:::defense
-    A13 -.-> M13["M1.3: Liveness Probing & Health Checks - service_health Gauge"]:::monitor
+    %% Sub-attacks & Defenses for Threat 2 (Massive DoS & Botnets)
+    T2 --> T21["T2.1: Multi-Client Ingestion Flood<br>(Botnet load-client-a & load-client-b)"]:::subattack
+    T21 -.-> D21["D2.1: Token-Bucket Rate Limiter<br>(HTTP 429 Too Many Requests)"]:::defense
+    T21 -.-> D22["D2.2: Incus cgroups Resource Quotas<br>(limits.cpu=1, limits.memory=256MiB)"]:::defense
+    T21 -.-> D23["D2.3: HTTP Server Timeout Capping<br>(ReadHeaderTimeout=3s, MaxBytes=1MB)"]:::defense
+    T21 -.-> M21["M2.1: Prometheus Latency & Rate Anomaly<br>(service_response_time_seconds p95)"]:::monitor
+    T21 -.-> S21["S2.1: Wazuh SIEM Rule 100102<br>(Volumetric Request Frequency Alert)"]:::siem
+    S21 -.-> AR1
 
-    %% Sub-attacks & Defenses for A2 (Data Poisoning)
-    A2 --> A21["A2.1: Rogue Sensor Spoofing - Fake Extreme Temperatures"]:::subattack
-    A21 -.-> D21["D2.1: Mutual TLS - mTLS / Device Authentication Tokens"]:::defense
-    A21 -.-> D22["D2.2: Input Validation - Plausibility Bounds Checking"]:::defense
-    A21 -.-> M21["M2.1: Statistical Anomaly Detection on Ingested Values"]:::monitor
-
-    A2 --> A22["A2.2: Arbitrary Unregistration - DELETE /register/id"]:::subattack
-    A22 -.-> D23["D2.3: Restrict DELETE Methods via RBAC / Admin Tokens"]:::defense
-    A22 -.-> M22["M2.2: Prometheus Alert on Unexpected Service Deregistration"]:::monitor
-
-    %% Sub-attacks & Defenses for A3 (Service Hijacking)
-    A3 --> A31["A3.1: Registry Poisoning - Register Malicious Storage/Ingestion"]:::subattack
-    A31 -.-> D31["D3.1: Cryptographic Service Identity Verification & Allowlisting"]:::defense
-    A31 -.-> D32["D3.2: Kubernetes NetworkPolicies - Restrict Egress/Ingress"]:::defense
-    A31 -.-> M31["M3.1: Service Discovery Audit & Unexpected Endpoint Alerting"]:::monitor
-
-    %% Sub-attacks & Defenses for A4 (Reconnaissance)
-    A4 --> A41["A4.1: Query Registry for System Topology - GET /services"]:::subattack
-    A41 -.-> D41["D4.1: Network Segmentation - Keep Registry in Private Network"]:::defense
-    A41 -.-> D42["D4.2: End-to-End Transport Layer Security - TLS 1.3"]:::defense
-    A41 -.-> M41["M4.1: Access Logging & Audit Trails"]:::monitor
+    %% Sub-attacks & Defenses for Threat 3 (Route & Signals Hijacking)
+    T3 --> T31["T3.1: Transparent Packet Diversion<br>(iptables NAT PREROUTING & mitmproxy)"]:::subattack
+    T31 --> T32["T3.2: In-Flight Telemetry Payload Tampering<br>(Altering temperature reading to 999.9°C)"]:::subattack
+    T32 -.-> D31["D3.1: End-to-End Cryptographic HMAC-SHA256<br>(Constant-time verification -> HTTP 401)"]:::defense
+    T32 -.-> D32["D3.2: Replay Window Protection<br>(Timestamp drift rejection: drift > 10s)"]:::defense
+    T32 -.-> D33["D3.3: Mutual TLS / TLS 1.3 Transport Encryption<br>(Untrusted MitM fails CA validation)"]:::defense
+    T32 -.-> S31["S3.1: Wazuh SIEM Rule 100104<br>(POST /ingest 401 Signature Failure Alert)"]:::siem
+    S31 -.-> AR1
 ```
 
 ---

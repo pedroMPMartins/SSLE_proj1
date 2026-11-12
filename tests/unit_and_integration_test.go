@@ -833,6 +833,143 @@ func TestHMACPayloadSigningAndTamperDefense(t *testing.T) {
 	}
 }
 
+// TestThreeThreatsTriadValidation verifies that all three course syllabus threats are verified in an integrated pipeline
+func TestThreeThreatsTriadValidation(t *testing.T) {
+	secretKey := []byte("ssle-triad-secret-key-32bytes!")
+	maxDrift := 5 * time.Second
+
+	// Setup a fully defended mock ingestion server with all 3 threat mitigations active:
+	// - Threat 1: Shellshock command injection defense
+	// - Threat 2: Payload size capping (1MB) + rate limiting (burst of 5)
+	// - Threat 3: HMAC-SHA256 signature verification + replay window check
+	limiterTokens := 5
+	var mu sync.Mutex
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /ingest", func(w http.ResponseWriter, r *http.Request) {
+		// Defense 1 (Threat 1): Shellshock Header Inspection
+		for _, values := range r.Header {
+			for _, val := range values {
+				if strings.Contains(val, "() {") {
+					function.RespondJSON(w, http.StatusForbidden, map[string]string{"error": "Threat 1: Shellshock injection blocked"})
+					return
+				}
+			}
+		}
+
+		// Defense 2a (Threat 2): Payload size capping (1MB)
+		r.Body = http.MaxBytesReader(w, r.Body, 1024*1024)
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			function.RespondJSON(w, http.StatusBadRequest, map[string]string{"error": "Threat 2: Payload too large"})
+			return
+		}
+
+		// Defense 2b (Threat 2): Token-bucket rate limiting
+		mu.Lock()
+		if limiterTokens <= 0 {
+			mu.Unlock()
+			w.Header().Set("Retry-After", "1")
+			function.RespondJSON(w, http.StatusTooManyRequests, map[string]string{"error": "Threat 2: Rate limit exceeded"})
+			return
+		}
+		limiterTokens--
+		mu.Unlock()
+
+		// Defense 3 (Threat 3): HMAC-SHA256 signature & replay window check
+		sigHeader := r.Header.Get("X-Signature")
+		tsHeader := r.Header.Get("X-Signature-Timestamp")
+		if sigHeader == "" || tsHeader == "" {
+			function.RespondJSON(w, http.StatusUnauthorized, map[string]string{"error": "Threat 3: Missing signature headers"})
+			return
+		}
+
+		valid, reason := function.VerifyPayload(secretKey, tsHeader, sigHeader, body, maxDrift)
+		if !valid {
+			function.RespondJSON(w, http.StatusUnauthorized, map[string]string{"error": "Threat 3: " + reason})
+			return
+		}
+
+		function.RespondJSON(w, http.StatusOK, map[string]string{"status": "accepted"})
+	})
+
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	// 1. Verify Threat 1 Defense: Shellshock injection is dropped with 403 Forbidden
+	req1, _ := http.NewRequest("POST", server.URL+"/ingest", strings.NewReader(`{"device_id":"s1","temperature":20.0}`))
+	req1.Header.Set("User-Agent", "() { :; }; /bin/cat /etc/passwd")
+	resp1, err := http.DefaultClient.Do(req1)
+	if err != nil || resp1.StatusCode != http.StatusForbidden {
+		t.Errorf("Threat 1 defense failed: expected HTTP 403, got %d, err: %v", resp1.StatusCode, err)
+	}
+
+	// 2. Verify Threat 2 Defense:
+	// 2a. Oversized payload is dropped with 400 Bad Request
+	hugeBody := bytes.Repeat([]byte("B"), 2*1024*1024)
+	req2a, _ := http.NewRequest("POST", server.URL+"/ingest", bytes.NewReader(hugeBody))
+	resp2a, err := http.DefaultClient.Do(req2a)
+	if err != nil || resp2a.StatusCode != http.StatusBadRequest {
+		t.Errorf("Threat 2 payload capping failed: expected HTTP 400, got %d, err: %v", resp2a.StatusCode, err)
+	}
+
+	// 2b. Volumetric flooding exhausts tokens and returns 429 Too Many Requests
+	exhausted := false
+	for i := 0; i < 10; i++ {
+		validPayload := []byte(`{"device_id":"legit-sensor","temperature":21.0}`)
+		tsStr, sigStr := function.SignPayload(secretKey, time.Now(), validPayload)
+		reqFlood, _ := http.NewRequest("POST", server.URL+"/ingest", bytes.NewReader(validPayload))
+		reqFlood.Header.Set("X-Signature", sigStr)
+		reqFlood.Header.Set("X-Signature-Timestamp", tsStr)
+		respFlood, err := http.DefaultClient.Do(reqFlood)
+		if err == nil && respFlood.StatusCode == http.StatusTooManyRequests {
+			exhausted = true
+			break
+		}
+	}
+	if !exhausted {
+		t.Errorf("Threat 2 rate limiting failed: expected HTTP 429 upon token depletion")
+	}
+
+	// 3. Verify Threat 3 Defense:
+	// Reset rate limit tokens for Threat 3 verification
+	mu.Lock()
+	limiterTokens = 5
+	mu.Unlock()
+
+	legitBody := []byte(`{"device_id":"sensor-edge-01","temperature":22.5}`)
+	tsStr, sigStr := function.SignPayload(secretKey, time.Now(), legitBody)
+
+	// 3a. Legitimate signed request -> 200 OK
+	req3a, _ := http.NewRequest("POST", server.URL+"/ingest", bytes.NewReader(legitBody))
+	req3a.Header.Set("X-Signature", sigStr)
+	req3a.Header.Set("X-Signature-Timestamp", tsStr)
+	resp3a, err := http.DefaultClient.Do(req3a)
+	if err != nil || resp3a.StatusCode != http.StatusOK {
+		t.Errorf("Threat 3 authentic request failed: expected HTTP 200, got %d", resp3a.StatusCode)
+	}
+
+	// 3b. MitM tampered payload in transit -> 401 Unauthorized
+	tamperedBody := []byte(`{"device_id":"sensor-edge-01","temperature":999.9}`)
+	req3b, _ := http.NewRequest("POST", server.URL+"/ingest", bytes.NewReader(tamperedBody))
+	req3b.Header.Set("X-Signature", sigStr)
+	req3b.Header.Set("X-Signature-Timestamp", tsStr)
+	resp3b, err := http.DefaultClient.Do(req3b)
+	if err != nil || resp3b.StatusCode != http.StatusUnauthorized {
+		t.Errorf("Threat 3 tamper defense failed: expected HTTP 401, got %d", resp3b.StatusCode)
+	}
+
+	// 3c. Replayed packet with stale timestamp -> 401 Unauthorized
+	staleTsStr, staleSig := function.SignPayload(secretKey, time.Now().Add(-30*time.Second), legitBody)
+	req3c, _ := http.NewRequest("POST", server.URL+"/ingest", bytes.NewReader(legitBody))
+	req3c.Header.Set("X-Signature", staleSig)
+	req3c.Header.Set("X-Signature-Timestamp", staleTsStr)
+	resp3c, err := http.DefaultClient.Do(req3c)
+	if err != nil || resp3c.StatusCode != http.StatusUnauthorized {
+		t.Errorf("Threat 3 replay defense failed: expected HTTP 401, got %d", resp3c.StatusCode)
+	}
+}
+
 
 
 

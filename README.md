@@ -230,4 +230,23 @@ MAX_TIMESTAMP_DRIFT_SECS=10 \
 ```
 
 
+## Three Threats Selection & Evaluation (Course Syllabus)
+
+Comprehensive analysis following Slide 12 criteria (threat description, relevance, exploit vector, monitoring actions, mitigations, active responses, and practical PoC post-mortem) is documented in [`docs/three_threats_evaluation.md`](docs/three_threats_evaluation.md), with formal attack modeling in [`docs/attack_defense_tree.md`](docs/attack_defense_tree.md).
+
+### Run the Unified Three Threats Demonstrator
+Demonstrates and validates all three threats (Shellshock, DDoS, and MitM) in sequence against live or containerized endpoints:
+```bash
+./scripts/demonstrate_three_threats.sh http://localhost:5001 http://localhost:5050
+```
+
+### Three Threats Summary Matrix:
+| Threat | Syllabus Area | Primary Detection | Primary Defense | SIEM Rule & Active Response |
+| :--- | :--- | :--- | :--- | :--- |
+| **1. Shellshock / Reputation** | Reputation Systems & Exploitation | Access Log Pattern Regex | Header Drop (`403 Forbidden`) | Rule 100100 & 100101 $\rightarrow$ `firewall-drop` (60s) |
+| **2. DDoS / Botnet** | Massive DoS Disruptions & Botnets | Prometheus `p95` Latency & Req/s | Token Bucket (`429`) & Incus cgroups | Rule 100102 $\rightarrow$ `firewall-drop` (60s) |
+| **3. Route & Signals Hijacking** | Route and Signals Hijacking | Ingestion Signature / Replay Check | HMAC-SHA256 (`401`) & TLS/mTLS | Rule 100104 $\rightarrow$ `firewall-drop` (60s) |
+
+
+
 

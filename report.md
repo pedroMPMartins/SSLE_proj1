@@ -164,47 +164,58 @@ The following components currently exist in `incremental_system` but represent e
 
 ---
 
-### Gap 5: The "Three Threats" Selection for Project 1
-Project 1 requires students to address **three threats** from the syllabus. Based on Guides 3, 4, and 5, the most coherent and fully supported triad is:
+### Gap 5: The "Three Threats" Selection for Project 1 — **STATUS: COMPLETED [x]**
+Project 1 requires students to address **three threats** from the course syllabus (`guidelines_v0.pdf`, Slide 6). Based on Guides 3, 4, and 5, our selected, fully implemented, and experimentally verified triad is:
 
 ```mermaid
 flowchart TD
     subgraph Three Required Threats
-        T1["Threat 1: Web Exploitation & Command Injection (Guide 4 - Shellshock)"]
-        T2["Threat 2: Distributed Denial of Service - DDoS / Botnet (Guide 5 & Guide 3)"]
-        T3["Threat 3: Route & Signals Hijacking - MitM Interception (Guide 5)"]
+        T1["Threat 1: Reputation Systems & Exploitation<br>(CVE-2014-6271 Shellshock & AlienVault CDB)"]
+        T2["Threat 2: Massive Denial-of-Service Disruptions & Botnets<br>(Concurrent HTTP Flood & Target Hardening)"]
+        T3["Threat 3: Route & Signals Hijacking<br>(Incus Dual-Subnet Interception & HMAC-SHA256 / mTLS)"]
     end
 
     subgraph Dual Observability Architecture
-        PROM["Prometheus Monitoring<br>(Metric anomalies, throughput, latency, CPU/RAM)"]
+        PROM["Prometheus Monitoring<br>(Metric anomalies, throughput, latency percentiles, CPU/RAM)"]
         WAZUH["Wazuh SIEM<br>(Log analysis, rule matching, Active Response)"]
     end
 
     subgraph Defense & Active Response
-        D1["Wazuh Active Response<br>(firewall-drop, AlienVault reputation CDB)"]
-        D2["Ingress Rate Limiting & Resource Quotas<br>(Token bucket, Incus CPU/RAM limits)"]
-        D3["End-to-End Cryptography<br>(mTLS, Token Auth, HMAC integrity)"]
+        D1["Wazuh Active Response<br>(firewall-drop 60s quarantine for all 3 threats)"]
+        D2["Ingress Rate Limiting & Resource Quotas<br>(Token bucket, Incus CPU/RAM limits, MaxBytes)"]
+        D3["End-to-End Cryptography<br>(HMAC-SHA256, Replay window, TLS 1.3 / mTLS)"]
     end
 
     T1 --> WAZUH --> D1
     T2 --> PROM --> D2
-    T2 --> WAZUH
+    T2 --> WAZUH --> D1
     T3 --> PROM
     T3 --> D3
+    T3 --> WAZUH --> D1
 ```
 
-1. **Threat 1: Web Exploitation & Injection (Shellshock / Malicious Payloads — Guide 4)**
-   * *Target:* Exposed HTTP gateway or Apache proxy.
-   * *Detection:* Wazuh agent log parsing (`localfile`) + Rule `100100`.
-   * *Mitigation:* Wazuh Active Response (`firewall-drop` for 60s) + AlienVault reputation database.
-2. **Threat 2: Volumetric Denial-of-Service / Botnet (DDoS — Guide 5 & 3)**
-   * *Target:* Ingestion Service (`POST /ingest`).
-   * *Detection:* Prometheus request rate surges (`service_requests_per_second`), latency percentiles (`service_response_time_seconds`), and Incus CPU starvation.
-   * *Mitigation:* Token-bucket rate limiting (`HTTP 429`), payload size capping, container resource isolation.
-3. **Threat 3: Route & Signals Hijacking (Transparent MitM Interception — Guide 5)**
-   * *Target:* Inter-service telemetry transmission.
-   * *Detection:* Network anomaly detection, TLS validation mismatch, unauthenticated registry unregistration.
-   * *Mitigation:* Mutual TLS (mTLS) / pre-shared authentication tokens (`X-Admin-Token`), preventing plain-text eavesdropping or tampering.
+* **Threat 1: Reputation Systems & Web Exploitation (Shellshock & Threat Intel — Guide 4)**
+  * *Target:* Exposed Ingestion HTTP Gateway (`POST /ingest`).
+  * *Exploit Tooling:* `cmd/attacker -mode shellshock` and `-mode malicious_ip`.
+  * *Detection:* Structured Apache Combined access log parsing (`localfile`) + Wazuh **Rule 100100** (Shellshock regex) & **Rule 100101** (AlienVault IP reputation CDB lookup).
+  * *Mitigation & Active Response:* Application-layer header sanitization (drop with `HTTP 403 Forbidden`) + Wazuh Active Response `/var/ossec/active-response/bin/firewall-drop` (60s automated IP quarantine).
+* **Threat 2: Massive Denial-of-Service Disruptions & Botnets (Guide 5 & Guide 3)**
+  * *Target:* Ingestion Service (`POST /ingest`) and SQLite backend.
+  * *Exploit Tooling:* Multi-client botnet emulation (`load-client-a`, `load-client-b`), ApacheBench (`ab`), and `cmd/attacker -mode flood` / `-mode benchmark`.
+  * *Detection:* Prometheus request rate surges (`service_requests_per_second`), latency percentiles (`service_response_time_seconds` p95), container CPU starvation + Wazuh **Rule 100102** (Level 8 high-rate volumetric flood).
+  * *Mitigation & Active Response:* Multi-layer target hardening: Incus cgroups (`limits.cpu=1`, `limits.memory=256MiB`), HTTP server timeouts (`ReadHeaderTimeout=3s`, `ReadTimeout=5s`), memory capping (`http.MaxBytesReader=1MB`), token-bucket rate limiting (`HTTP 429 Too Many Requests`), and Wazuh Active Response `firewall-drop`.
+* **Threat 3: Route & Signals Hijacking (Man-in-the-Middle — Guide 5)**
+  * *Target:* In-transit telemetry stream between client sensors and the ingestion gateway.
+  * *Exploit Tooling:* Incus dual-subnet lab (`ssle-net-client` & `ssle-net-server`) with router container (`ssle-interceptor`), `iptables` NAT PREROUTING redirection to port 8080, `mitmproxy`, and `cmd/attacker -mode tamper`.
+  * *Detection:* Constant-time cryptographic signature mismatch, timestamp drift / replay detection + Wazuh **Rule 100104** (Level 11 MitM / tampering alert).
+  * *Mitigation & Active Response:* Application-layer HMAC-SHA256 telemetry signing (`X-Signature` and `X-Signature-Timestamp`), replay window validation (rejecting drift > 10s with `HTTP 401 Unauthorized`), TLS 1.3 / mTLS certificates with SANs (`scripts/generate_certs.sh`), and Wazuh Active Response `firewall-drop`.
+
+* **Implemented Artifacts & Validation for Gap 5:**
+  1. **Comprehensive Evaluation Document (`docs/three_threats_evaluation.md`):** Complete analysis following Slide 12 criteria (threat description, relevance, exploit dynamics, monitoring metrics, defensive mitigations, active-responses, and practical PoC post-mortem).
+  2. **Attack-Defense Tree (`docs/attack_defense_tree.md`):** Updated formal ADTree integrating all three syllabus threats, SIEM detection rules, and Active Response branches.
+  3. **Wazuh Active Response for All 3 Threats (`monitoring/wazuh/ossec.conf` & `deploy_wazuh.sh`):** Configured `<active-response>` triggering `firewall-drop` across rules `100100`, `100101`, `100102`, and `100104`.
+  4. **Unified Multi-Threat Demonstrator (`scripts/demonstrate_three_threats.sh`):** Automated validation script demonstrating each threat in sequence with colored terminal reporting and comparison matrix.
+  5. **Automated Test Suite Integration (`tests/` & `test_runner.sh`):** Added unit test `TestThreeThreatsTriadValidation` and test runner Step 6.9 verifying the three threats triad end-to-end (100% pass).
 
 ---
 
@@ -270,12 +281,20 @@ To integrate seamlessly with Wazuh, Incus multi-container networking, and hierar
 7. **[DONE]** Add automated test coverage in `tests/` (`TestHMACPayloadSigningAndTamperDefense`) and `test_runner.sh` (Step 6.8).
 8. **[DONE]** Document complete architecture and workflow in `docs/guide5_mitm_and_cryptography.md`.
 
-### Phase 5: CI Testing Infrastructure Update — **[COMPLETED]**
+### Phase 5: Three Threats Triad Selection & Evaluation — **[COMPLETED]**
+1. **[DONE]** Formally mapped the 3 threats to the syllabus: Threat 1 (Reputation Systems & Exploitation), Threat 2 (Massive DoS & Botnets), and Threat 3 (Route & Signals Hijacking).
+2. **[DONE]** Updated formal Attack-Defense Tree (`docs/attack_defense_tree.md`) reflecting all 3 syllabus threats, observability metrics, and SIEM Active Response branches.
+3. **[DONE]** Extended Wazuh Active Response (`firewall-drop`) across rules `100100`, `100101`, `100102`, and `100104` in `monitoring/wazuh/ossec.conf` and `deploy_wazuh.sh`.
+4. **[DONE]** Implemented unified demonstrator script `scripts/demonstrate_three_threats.sh` with colored terminal output and comparative evaluation matrix.
+5. **[DONE]** Published comprehensive academic evaluation document `docs/three_threats_evaluation.md` satisfying Slide 12 criteria (threat description, relevance, exploit vector, monitoring actions, mitigations, active responses, and practical PoC post-mortem).
+6. **[DONE]** Added automated unit test `TestThreeThreatsTriadValidation` and CI pipeline verification in `test_runner.sh` Step 6.9 (100% pass).
+
+### Phase 6: CI Testing Infrastructure Update — **[COMPLETED]**
 1. **[DONE]** Extended `test_runner.sh` to validate hierarchical registry queries, location matching, negative matching, and rapid incident localization.
 2. **[DONE]** Added automated regression checks for Threat 1 (Shellshock exploit rejection and access log formatting) and Threat 2 (DDoS benchmarking and worksheet generation).
 3. **[DONE]** Comprehensive happy and unhappy path test coverage: malformed payloads (400), payload capping (1MB), exact boundary checks (-50.0°C and 100.0°C), unauthorized access (403), non-existent endpoints (404), and database zero-reading handling.
 
-### Phase 6: Project 1 Report Preparation (`docs/project1_report.md`)
+### Phase 7: Project 1 Report Preparation (`docs/project1_report.md`)
 Draft the final academic report following the required structure from `guidelines_v0.pdf`:
 * Introduction
 * State of the Art (SOA, SIEM, Prometheus, Attack-Defense Trees)

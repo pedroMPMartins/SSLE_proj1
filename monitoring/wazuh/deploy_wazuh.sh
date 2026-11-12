@@ -68,11 +68,11 @@ incus exec "$CONTAINER_NAME" -- bash -c '
     if ! grep -q "rules_id>100100" /var/ossec/etc/ossec.conf; then
         cat << "EOF" >> /var/ossec/etc/ossec.conf
 
-  <!-- SSLE Active Response for Shellshock & Threat Intel -->
+  <!-- SSLE Active Response for All Three Syllabus Threats -->
   <active-response>
     <command>firewall-drop</command>
     <location>local</location>
-    <rules_id>100100, 100101</rules_id>
+    <rules_id>100100, 100101, 100102, 100104</rules_id>
     <timeout>60</timeout>
   </active-response>
 EOF
@@ -90,8 +90,8 @@ echo "=========================================================="
 echo "  Wazuh SIEM Manager deployed successfully!"
 echo "  Container:    $CONTAINER_NAME"
 echo "  Manager IP:   $CONTAINER_IP"
-echo "  Rules:        Shellshock (100100), AlienVault (100101)"
-echo "  Active Resp:  firewall-drop (60s ban)"
+echo "  Rules:        Threat 1 (100100, 100101), Threat 2 (100102), Threat 3 (100104)"
+echo "  Active Resp:  firewall-drop (60s ban for all 3 threats)"
 echo "=========================================================="
 echo "Next step: Install the agent on the target container using:"
 echo "  ./monitoring/wazuh/install_agent.sh $CONTAINER_IP ssle-ingestion"
