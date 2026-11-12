@@ -219,16 +219,35 @@ flowchart TD
 
 ---
 
-### Gap 6: Fault Management Workflow (FCAPS) & Event Correlation
-* **What Guidelines Mandate:**
-  * Must follow the 5-stage FCAPS cycle:
-    1. **Detecting:** Immediate observation of an anomaly.
-    2. **Diagnosing & Isolating:** Narrowing down affected service and host container.
-    3. **Correlating:** Connecting metric symptoms (Prometheus CPU/latency spike) with log/security causes (Wazuh attack alerts).
-    4. **Resolution / Mitigation:** Automated (Wazuh active-response firewall drop) and application-level (rate-limiting 429).
+### Gap 6: Fault Management Workflow (FCAPS) & Event Correlation — **STATUS: COMPLETED [x]**
+* **What Guidelines Mandate (`guidelines_v0.pdf`, Slide 8 & 9):**
+  * Implement the 5-stage Fault Management cycle from FCAPS:
+    1. **Detecting:** Immediate observation of an anomaly across Prometheus telemetry.
+    2. **Diagnosing & Isolating:** Narrowing down affected service, canonical FQSN, physical host, and logical container.
+    3. **Correlating:** Connecting metric symptoms (latency spikes, request rate surges, error rates) with log/security causes (Wazuh attack alerts) to perform Root Cause Analysis. Address the course note: *"Fault Management within FCAPS does not deal with security events (i.e. at least explicit security events)"* by explicitly bridging operational faults and security incidents.
+    4. **Resolution / Mitigation:** Automated (Wazuh active-response firewall drop) and operational (rate limiting, container restart, local failover).
     5. **Post-Mortem:** Analysis of logs, attack traces, and recovery verification.
-* **Current State:**
-  * Prometheus and defensive code handle *detection* and *remediation*, but correlation between metric alarms and security events is currently manual and undocumented.
+* **Implemented Solution:**
+  * **Stage 1 (Detecting): Prometheus Alerting Rules (`monitoring/prometheus_alerts.yml`):**
+    Defined threshold rules for `ServiceLivenessFailure` (`service_health == 0`), `HighResponseLatency` (>200ms), `ElevatedErrorRate` (>10%), `ContainerCPUSaturation` (>80%), and `VolumetricRequestSurge` (>50 rps).
+  * **Stage 2 (Diagnosing & Isolating): Hierarchical Scope Narrowing (`cmd/registry`):**
+    Integrated `GET /services/locate/{query}` resolving incidents to their physical machine (`kali-vm`), logical container (`incus:ssle-ingestion`), availability zone (`lab-ssle`), and administrative region (`pt-aveiro`), with local failover via `DiscoverLocally()`.
+  * **Stage 3 (Correlating): Cross-Domain Event Correlation Matrix:**
+    Built the correlation logic mapping operational symptoms to causal security events:
+    * Latency spike + 429 surge $\leftrightarrow$ Wazuh Rule 100102 (Volumetric DoS flood).
+    * Error rate spike + 403 Forbidden $\leftrightarrow$ Wazuh Rule 100100 (Shellshock) / Rule 100101 (AlienVault CDB).
+    * Error rate spike + 401 Unauthorized $\leftrightarrow$ Wazuh Rule 100104 (Cryptographic HMAC tampering / replay).
+    * Latency spike with NO security alerts $\leftrightarrow$ Internal resource contention / disk I/O bottleneck.
+  * **Stage 4 (Resolution / Mitigation): Multi-Tiered Automated Remediation:**
+    Executes Wazuh Active Response `firewall-drop` against the offending source IP for 60s, triggers token-bucket HTTP 429 backoff, or initiates container restart (`incus restart ssle-ingestion`).
+  * **Stage 5 (Post-Mortem): Baseline Restoration & Incident Reporting:**
+    Probes `/health` to verify service availability (`200 OK`), confirms latency normalization (`p95 < 20ms`), verifies active response log entries (`/var/ossec/logs/active-responses.log`), and generates structured JSON reports.
+  * **Automated FCAPS Engine Tooling (`scripts/fcaps_event_correlator.py`):**
+    Autonomous CLI engine that polls Prometheus exporters, queries the registry, scans access logs, identifies the root cause, and generates structured FCAPS incident reports.
+  * **Comprehensive Documentation (`docs/fcaps_fault_management.md`):**
+    Architectural guide detailing the theoretical problem, 5-stage workflow, state machine, correlation matrix, and practical walkthroughs.
+  * **Automated CI Validation (`tests/` & `test_runner.sh`):**
+    Unit test `TestFCAPSEventCorrelationWorkflow` and test runner Step 7.3 validating full 5-stage execution against live services (100% pass).
 
 ---
 
@@ -289,12 +308,22 @@ To integrate seamlessly with Wazuh, Incus multi-container networking, and hierar
 5. **[DONE]** Published comprehensive academic evaluation document `docs/three_threats_evaluation.md` satisfying Slide 12 criteria (threat description, relevance, exploit vector, monitoring actions, mitigations, active responses, and practical PoC post-mortem).
 6. **[DONE]** Added automated unit test `TestThreeThreatsTriadValidation` and CI pipeline verification in `test_runner.sh` Step 6.9 (100% pass).
 
-### Phase 6: CI Testing Infrastructure Update — **[COMPLETED]**
+### Phase 6: Fault Management Workflow (FCAPS) & Event Correlation — **[COMPLETED]**
+1. **[DONE]** Defined Prometheus anomaly detection rules (`monitoring/prometheus_alerts.yml`) covering Stage 1 (Detecting).
+2. **[DONE]** Linked Stage 2 (Diagnosing & Isolating) to hierarchical location mapping and incident localization (`/services/locate/{query}`).
+3. **[DONE]** Established cross-domain Event Correlation matrix (Stage 3) bridging operational metrics with Wazuh SIEM security logs.
+4. **[DONE]** Automated multi-tier mitigation (Stage 4) triggering Wazuh `firewall-drop` for security attacks or container failover for operational faults.
+5. **[DONE]** Automated baseline recovery validation and incident reporting (Stage 5 Post-Mortem).
+6. **[DONE]** Implemented autonomous CLI correlation tool (`scripts/fcaps_event_correlator.py`).
+7. **[DONE]** Published comprehensive architectural documentation in `docs/fcaps_fault_management.md`.
+8. **[DONE]** Integrated unit test `TestFCAPSEventCorrelationWorkflow` and test runner Step 7.3 (100% pass).
+
+### Phase 7: CI Testing Infrastructure Update — **[COMPLETED]**
 1. **[DONE]** Extended `test_runner.sh` to validate hierarchical registry queries, location matching, negative matching, and rapid incident localization.
 2. **[DONE]** Added automated regression checks for Threat 1 (Shellshock exploit rejection and access log formatting) and Threat 2 (DDoS benchmarking and worksheet generation).
 3. **[DONE]** Comprehensive happy and unhappy path test coverage: malformed payloads (400), payload capping (1MB), exact boundary checks (-50.0°C and 100.0°C), unauthorized access (403), non-existent endpoints (404), and database zero-reading handling.
 
-### Phase 7: Project 1 Report Preparation (`docs/project1_report.md`)
+### Phase 8: Project 1 Report Preparation (`docs/project1_report.md`)
 Draft the final academic report following the required structure from `guidelines_v0.pdf`:
 * Introduction
 * State of the Art (SOA, SIEM, Prometheus, Attack-Defense Trees)

@@ -248,5 +248,28 @@ Demonstrates and validates all three threats (Shellshock, DDoS, and MitM) in seq
 | **3. Route & Signals Hijacking** | Route and Signals Hijacking | Ingestion Signature / Replay Check | HMAC-SHA256 (`401`) & TLS/mTLS | Rule 100104 $\rightarrow$ `firewall-drop` (60s) |
 
 
+## Fault Management Workflow (FCAPS) & Event Correlation
+
+Comprehensive architecture, state diagrams, correlation matrices, and incident post-mortems are documented in [`docs/fcaps_fault_management.md`](docs/fcaps_fault_management.md).
+
+### The 5-Stage FCAPS Cycle
+1. **Detecting:** Prometheus scrapers monitor `service_health`, `service_response_time_seconds`, `service_requests_per_second`, and `service_cpu_percent` with alerting thresholds defined in [`monitoring/prometheus_alerts.yml`](monitoring/prometheus_alerts.yml).
+2. **Diagnosing & Isolating:** Service Registry rapid incident localization (`GET /services/locate/{id}`) maps anomalies to canonical FQSN, physical machine (`kali-vm`), container (`incus:ssle-ingestion`), and administrative domain (`pt-aveiro/lab-ssle`).
+3. **Correlating:** Bridges the gap between operational metrics and security logs, performing root cause analysis across Wazuh rules (100100/101, 100102, 100104) and Apache Combined access logs.
+4. **Resolution / Mitigation:** Automated Wazuh Active Response (`firewall-drop` 60s IP ban), application-level rate limiting (`HTTP 429`), or container restart (`incus restart`).
+5. **Post-Mortem:** Validates baseline recovery (`/health` UP, latency < 20ms) and outputs a structured incident report.
+
+### Run the Autonomous FCAPS Correlator
+```bash
+./scripts/fcaps_event_correlator.py \
+  --registry http://localhost:5050 \
+  --health-exp http://localhost:8000 \
+  --diag-exp http://localhost:8001 \
+  --access-log /var/log/ssle/ingestion_access.log \
+  --service ingestion
+```
+
+
+
 
 

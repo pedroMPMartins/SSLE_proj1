@@ -1,0 +1,66 @@
+# ==============================================================================
+# SSLE Project 1: Prometheus Alerting Rules for FCAPS Fault Management
+# Defines anomaly detection thresholds for Stage 1 (Detecting) of the FCAPS cycle
+# ==============================================================================
+groups:
+  - name: ssle_fcaps_operational_alerts
+    rules:
+      # 1. Service Outage / Liveness Loss
+      - alert: ServiceLivenessFailure
+        expr: service_health == 0
+        for: 10s
+        labels:
+          severity: critical
+          tier: liveness
+          fcaps_stage: detecting
+        annotations:
+          summary: "Service {{ $labels.service }} is unreachable"
+          description: "Health probe to {{ $labels.endpoint }} failed. Immediate diagnosis and failover required."
+
+      # 2. Performance Degradation (Latency Spike)
+      - alert: HighResponseLatency
+        expr: service_response_time_seconds > 0.200
+        for: 10s
+        labels:
+          severity: warning
+          tier: performance
+          fcaps_stage: detecting
+        annotations:
+          summary: "Service {{ $labels.service }} experiencing elevated latency"
+          description: "Response time is {{ $value | humanizeDuration }} (threshold: 200ms). Correlate with DoS flood or CPU contention."
+
+      # 3. High Error Rate / Failure Surge
+      - alert: ElevatedErrorRate
+        expr: service_error_rate_percent > 10
+        for: 10s
+        labels:
+          severity: warning
+          tier: reliability
+          fcaps_stage: detecting
+        annotations:
+          summary: "High error rate on service {{ $labels.service }}"
+          description: "Error rate reached {{ $value }}%. Correlate with 401 (MitM tampering) or 403 (Shellshock / blacklist)."
+
+      # 4. Container Resource Saturation
+      - alert: ContainerCPUSaturation
+        expr: service_cpu_percent > 80
+        for: 15s
+        labels:
+          severity: warning
+          tier: resources
+          fcaps_stage: detecting
+        annotations:
+          summary: "High CPU utilization on {{ $labels.service }}"
+          description: "CPU usage at {{ $value }}%. Potential volumetric flood or resource exhaustion."
+
+      # 5. Volumetric Ingress Surge (DoS Symptom)
+      - alert: VolumetricRequestSurge
+        expr: service_requests_per_second > 50
+        for: 10s
+        labels:
+          severity: warning
+          tier: traffic
+          fcaps_stage: detecting
+        annotations:
+          summary: "Abnormal request rate surge on {{ $labels.service }}"
+          description: "Traffic reached {{ $value }} req/s. Trigger FCAPS event correlation engine to identify attacker IP."

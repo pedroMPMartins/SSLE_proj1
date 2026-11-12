@@ -807,6 +807,36 @@ else
     FAILED_STEPS+=("Monitoring: Diagnostics Exporter Metrics")
 fi
 
+# 7.3 Fault Management Workflow (FCAPS) & Event Correlation Engine Test
+log_info "Testing 5-Stage FCAPS Fault Management & Event Correlation Engine..."
+FCAPS_OUT="${TEST_TMP_DIR}/fcaps_report.json"
+if python3 scripts/fcaps_event_correlator.py \
+    --registry "${TEST_REGISTRY_URL}" \
+    --health-exp "${TEST_HEALTH_EXP_URL}" \
+    --diag-exp "${TEST_DIAG_EXP_URL}" \
+    --access-log "${TEST_TMP_DIR}/ingestion_access.log" \
+    --service "ingestion" \
+    --json > "$FCAPS_OUT" 2>&1; then
+
+    if grep -q '"detecting"' "$FCAPS_OUT" && \
+       grep -q '"diagnosing_and_isolating"' "$FCAPS_OUT" && \
+       grep -q '"correlating"' "$FCAPS_OUT" && \
+       grep -q '"resolution_and_mitigation"' "$FCAPS_OUT" && \
+       grep -q '"post_mortem"' "$FCAPS_OUT"; then
+        log_success "FCAPS Event Correlator: Verified full 5-stage workflow (Detect, Isolate, Correlate, Mitigate, Post-Mortem)."
+    else
+        log_error "FCAPS Event Correlator output missing expected 5-stage sections! Output:"
+        cat "$FCAPS_OUT"
+        OVERALL_SUCCESS=false
+        FAILED_STEPS+=("FCAPS Event Correlation Engine")
+    fi
+else
+    log_error "Failed to execute FCAPS event correlation engine! Output:"
+    cat "$FCAPS_OUT"
+    OVERALL_SUCCESS=false
+    FAILED_STEPS+=("FCAPS Event Correlation Engine")
+fi
+
 # ------------------------------------------------------------------------------
 # Final Summary Banner & CI Exit Code
 # ------------------------------------------------------------------------------

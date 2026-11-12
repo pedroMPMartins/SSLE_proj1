@@ -3,6 +3,9 @@ global:
   scrape_interval: 5s       # Scrape frequently for rapid detection during lab demos
   evaluation_interval: 5s
 
+rule_files:
+  - "prometheus_alerts.yml"
+
 scrape_configs:
   # 1. Prometheus self-monitoring
   - job_name: 'prometheus'

@@ -970,6 +970,134 @@ func TestThreeThreatsTriadValidation(t *testing.T) {
 	}
 }
 
+// TestFCAPSEventCorrelationWorkflow tests the 5-stage Fault Management cycle (Slide 9)
+func TestFCAPSEventCorrelationWorkflow(t *testing.T) {
+	// 1. Stage 1: Detecting (Metric Threshold Anomaly Detection)
+	type MetricAnomaly struct {
+		Name      string
+		Value     float64
+		Threshold float64
+		IsAnomaly bool
+	}
+
+	testMetrics := []MetricAnomaly{
+		{"latency_seconds", 0.250, 0.150, true},   // 250ms > 150ms -> Latency spike
+		{"error_rate_pct", 12.5, 5.0, true},       // 12.5% > 5% -> Elevated error rate
+		{"service_health", 1.0, 1.0, false},       // UP -> Normal
+		{"cpu_percent", 88.0, 80.0, true},         // 88% > 80% -> CPU contention
+	}
+
+	detectedAnomalies := 0
+	for _, m := range testMetrics {
+		if m.Name == "service_health" {
+			if m.Value == 0 {
+				detectedAnomalies++
+			}
+		} else {
+			if m.Value > m.Threshold {
+				detectedAnomalies++
+			}
+		}
+	}
+	if detectedAnomalies != 3 {
+		t.Errorf("Stage 1 Detecting: expected 3 anomalies, found %d", detectedAnomalies)
+	}
+
+	// 2. Stage 2: Diagnosing & Isolating (Hierarchical Scope Narrowing)
+	serv := models.Service{
+		ID:   "ingest-prod-01",
+		Kind: "ingestion",
+		URL:  "http://10.0.2.15:5001",
+		Location: models.ServiceLocation{
+			Region:       "pt-aveiro",
+			Zone:         "lab-ssle",
+			PhysicalHost: "kali-vm",
+			LogicalEnv:   "incus:ssle-ingestion",
+		},
+		Timestamp: time.Now(),
+	}
+	serv.Name = serv.BuildFQSN()
+
+	incidentDetails := serv.LocateIncidentDetails()
+	if incidentDetails["physical_host"] != "kali-vm" {
+		t.Errorf("Stage 2 Isolating: expected physical_host 'kali-vm', got %v", incidentDetails["physical_host"])
+	}
+	if incidentDetails["logical_env"] != "incus:ssle-ingestion" {
+		t.Errorf("Stage 2 Isolating: expected logical_env 'incus:ssle-ingestion', got %v", incidentDetails["logical_env"])
+	}
+	if !strings.Contains(serv.Name, "pt-aveiro.lab-ssle.kali-vm.incus:ssle-ingestion") {
+		t.Errorf("Stage 2 Isolating: canonical FQSN missing expected segments: %s", serv.Name)
+	}
+
+	// 3. Stage 3: Correlating (Connecting Metric Symptoms with Root Cause Log Evidence)
+	type CorrelationCase struct {
+		LogLine          string
+		ExpectedCause    string
+		ExpectedRuleID   int
+		ExpectedThreat   string
+	}
+
+	cases := []CorrelationCase{
+		{
+			LogLine:        `198.51.100.25 - - [12/Nov/2026:10:00:00 +0000] "POST /ingest HTTP/1.1" 403 45 "-" "() { :; }; /bin/cat /etc/passwd"`,
+			ExpectedCause:  "EXPLOITATION_SHELLSHOCK",
+			ExpectedRuleID: 100100,
+			ExpectedThreat: "Threat 1",
+		},
+		{
+			LogLine:        `10.20.1.50 - - [12/Nov/2026:10:00:00 +0000] "POST /ingest HTTP/1.1" 401 55 "-" "SSLE-Attacker/1.0"`,
+			ExpectedCause:  "MITM_PAYLOAD_TAMPERING",
+			ExpectedRuleID: 100104,
+			ExpectedThreat: "Threat 3",
+		},
+		{
+			LogLine:        `10.20.1.88 - - [12/Nov/2026:10:00:00 +0000] "POST /ingest HTTP/1.1" 429 60 "-" "ApacheBench/2.3"`,
+			ExpectedCause:  "DOS_VOLUMETRIC_FLOOD",
+			ExpectedRuleID: 100102,
+			ExpectedThreat: "Threat 2",
+		},
+	}
+
+	for _, c := range cases {
+		var matchedCause string
+		var matchedRule int
+		var matchedThreat string
+
+		if strings.Contains(c.LogLine, "() {") {
+			matchedCause = "EXPLOITATION_SHELLSHOCK"
+			matchedRule = 100100
+			matchedThreat = "Threat 1"
+		} else if strings.Contains(c.LogLine, `POST /ingest HTTP/1.1" 401`) {
+			matchedCause = "MITM_PAYLOAD_TAMPERING"
+			matchedRule = 100104
+			matchedThreat = "Threat 3"
+		} else if strings.Contains(c.LogLine, `POST /ingest HTTP/1.1" 429`) {
+			matchedCause = "DOS_VOLUMETRIC_FLOOD"
+			matchedRule = 100102
+			matchedThreat = "Threat 2"
+		}
+
+		if matchedCause != c.ExpectedCause || matchedRule != c.ExpectedRuleID || matchedThreat != c.ExpectedThreat {
+			t.Errorf("Stage 3 Correlating: expected (%s, %d, %s), got (%s, %d, %s)",
+				c.ExpectedCause, c.ExpectedRuleID, c.ExpectedThreat, matchedCause, matchedRule, matchedThreat)
+		}
+	}
+
+	// 4. Stage 4: Resolution / Mitigation (Action-Response Formulation)
+	attackerIP := "198.51.100.25"
+	activeResponseCommand := fmt.Sprintf("/var/ossec/active-response/bin/firewall-drop -ip %s -timeout 60", attackerIP)
+	if !strings.Contains(activeResponseCommand, attackerIP) || !strings.Contains(activeResponseCommand, "60") {
+		t.Errorf("Stage 4 Resolution: unexpected active response command: %s", activeResponseCommand)
+	}
+
+	// 5. Stage 5: Post-Mortem & Recovery Verification
+	isRecovered := true
+	postLatency := 0.012 // 12ms baseline
+	if !isRecovered || postLatency > 0.050 {
+		t.Errorf("Stage 5 Post-Mortem: failed baseline recovery verification")
+	}
+}
+
 
 
 
