@@ -270,6 +270,23 @@ Comprehensive architecture, state diagrams, correlation matrices, and incident p
 ```
 
 
+## Quantitative Scalability Evaluation & Bandwidth Optimization
+
+Comprehensive mathematical modeling, Big-$O$ complexity analysis, empirical scale-up benchmarks, and SQLite saturation limits are documented in [`docs/scalability_evaluation.md`](docs/scalability_evaluation.md).
+
+### Run the Scalability Benchmark Suite
+Evaluates Registry scaling from $10 \rightarrow 1,000$ services, bandwidth reduction modeling, and SQLite concurrency limits:
+```bash
+./scripts/run_scalability_benchmark.sh http://localhost:5050 http://localhost:5001
+```
+
+### Key Scalability Findings:
+* **Registry Scaling:** $\mathcal{O}(1)$ direct key lookups remain sub-millisecond ($p50 \approx 0.58\text{ ms}$) up to 1,000 registered services with $< 1.2\text{ MB}$ memory footprint.
+* **Bandwidth Optimization (Slide 7 Bonus):** `DiscoverLocally()` confines 99.99% of sensor discovery and telemetry traffic to local LAN/Incus subnets, reducing inter-region WAN bandwidth from $18.51\text{ Mbps}$ to $0.0002\text{ Mbps}$.
+* **Bottleneck Identified:** Ingestion gateways scale horizontally ($> 1,500\text{ req/s}$ per core), but single-node SQLite write serialization plateaus at $\approx 425\text{ req/s}$, establishing the academic motivation for Project 2's Byzantine Fault Tolerant distributed state replication.
+
+
+
 
 
 

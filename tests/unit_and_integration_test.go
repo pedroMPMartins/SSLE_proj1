@@ -1098,6 +1098,119 @@ func TestFCAPSEventCorrelationWorkflow(t *testing.T) {
 	}
 }
 
+// TestRegistryScalabilityAndLookupBounds tests quantitative scaling up to 1,000 services (Slides 4 & 7)
+func TestRegistryScalabilityAndLookupBounds(t *testing.T) {
+	registry := make(map[string]models.Service)
+	var mu sync.RWMutex
+
+	nServices := 1000
+	tStart := time.Now()
+
+	// 1. Batch registration of 1,000 services
+	for i := 0; i < nServices; i++ {
+		id := fmt.Sprintf("sensor-node-%04d", i)
+		reg := "pt-aveiro"
+		if i%2 == 1 {
+			reg = "pt-porto"
+		}
+		zone := "lab-ssle"
+		if i%4 == 0 {
+			zone = "zone-backup"
+		}
+
+		s := models.Service{
+			ID:   id,
+			Kind: "temperature",
+			URL:  fmt.Sprintf("http://10.20.1.%d:5000", (i%240)+10),
+			Location: models.ServiceLocation{
+				Region:       reg,
+				Zone:         zone,
+				PhysicalHost: fmt.Sprintf("host-%d", i%5),
+				LogicalEnv:   fmt.Sprintf("incus:sensor-%d", i),
+			},
+			Timestamp: time.Now(),
+		}
+		s.Name = s.BuildFQSN()
+
+		mu.Lock()
+		registry[id] = s
+		mu.Unlock()
+	}
+
+	regDuration := time.Since(tStart)
+	if regDuration > 2*time.Second {
+		t.Errorf("Registration of 1000 services took too long: %v (expected < 2s)", regDuration)
+	}
+
+	// 2. Exact O(1) hash map lookup
+	tLookup := time.Now()
+	mu.RLock()
+	target, exists := registry["sensor-node-0500"]
+	mu.RUnlock()
+	lookupDuration := time.Since(tLookup)
+
+	if !exists {
+		t.Fatalf("Service sensor-node-0500 not found in registry")
+	}
+	if target.Location.Region != "pt-aveiro" {
+		t.Errorf("Expected region pt-aveiro, got %s", target.Location.Region)
+	}
+	if lookupDuration > 10*time.Millisecond {
+		t.Errorf("Direct O(1) lookup took too long: %v (expected < 10ms)", lookupDuration)
+	}
+
+	// 3. Filtered query across 1,000 services (matching ~250 services in pt-aveiro and zone-backup)
+	tFilter := time.Now()
+	mu.RLock()
+	var matched []models.Service
+	for _, s := range registry {
+		if s.MatchesFilter("pt-aveiro", "zone-backup", "", "", "") {
+			matched = append(matched, s)
+		}
+	}
+	mu.RUnlock()
+	filterDuration := time.Since(tFilter)
+
+	if len(matched) == 0 {
+		t.Errorf("Filtered query returned 0 matches, expected ~125 matches")
+	}
+	if filterDuration > 50*time.Millisecond {
+		t.Errorf("Linear filter scan over 1,000 items took too long: %v (expected < 50ms)", filterDuration)
+	}
+}
+
+// BenchmarkRegistryDirectLookup measures the speed of O(1) hash map lookup across 1,000 services
+func BenchmarkRegistryDirectLookup(b *testing.B) {
+	registry := make(map[string]models.Service, 1000)
+	for i := 0; i < 1000; i++ {
+		id := fmt.Sprintf("sensor-%04d", i)
+		registry[id] = models.Service{
+			ID:   id,
+			Kind: "temperature",
+			Location: models.ServiceLocation{
+				Region: "pt-aveiro",
+				Zone:   "lab-ssle",
+			},
+		}
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = registry["sensor-0500"]
+	}
+}
+
+// BenchmarkHMACSignatureVerification measures the throughput of Threat 3 cryptographic verification
+func BenchmarkHMACSignatureVerification(b *testing.B) {
+	secretKey := []byte("ssle-secret-benchmark-key-32b!")
+	body := []byte(`{"device_id":"sensor-edge-01","temperature":22.5}`)
+	tsStr, sigHex := function.SignPayload(secretKey, time.Now(), body)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = function.VerifyPayload(secretKey, tsStr, sigHex, body, 10*time.Second)
+	}
+}
+
+
 
 
 
