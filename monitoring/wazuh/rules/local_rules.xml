@@ -8,7 +8,6 @@
   <rule id="100100" level="12">
     <if_group>web|access_log</if_group>
     <match>() { :; };|() { :;};</match>
-    <regex type="pcre2">\(\)\s*\{\s*:;\s*\};</regex>
     <description>SSLE SIEM Alert: Shellshock (CVE-2014-6271) command injection attempt detected</description>
     <mitre>
       <id>T1059</id>
@@ -44,7 +43,7 @@
   <rule id="100103" level="9">
     <if_group>web|access_log</if_group>
     <match>DELETE /register/</match>
-    <id>403</id>
+    <field name="id">403</field>
     <description>SSLE SIEM Alert: Unauthorized rogue service deregistration attempt blocked</description>
     <mitre>
       <id>T1565</id>
@@ -55,7 +54,7 @@
   <rule id="100104" level="11">
     <if_group>web|access_log</if_group>
     <match>POST /ingest</match>
-    <id>401</id>
+    <field name="id">401</field>
     <description>SSLE SIEM Alert: Route/Signals Hijacking (MitM) or Cryptographic Signature Tampering detected</description>
     <mitre>
       <id>T1557</id>

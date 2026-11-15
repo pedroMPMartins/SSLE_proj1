@@ -42,12 +42,42 @@ echo "==> Deploying custom rules and decoders to Wazuh Manager..."
 incus file push "${SCRIPT_DIR}/rules/local_rules.xml" "$CONTAINER_NAME/var/ossec/etc/rules/local_rules.xml"
 incus file push "${SCRIPT_DIR}/decoders/local_decoder.xml" "$CONTAINER_NAME/var/ossec/etc/decoders/local_decoder.xml"
 
-# 4. Deploy AlienVault IP reputation list and build CDB
+# 4. Deploy AlienVault IP reputation list
 echo "==> Deploying AlienVault IP reputation list..."
 incus exec "$CONTAINER_NAME" -- mkdir -p /var/ossec/etc/lists
 incus file push "${SCRIPT_DIR}/lists/alienvault_reputation" "$CONTAINER_NAME/var/ossec/etc/lists/alienvault_reputation"
 
-# Compile CDB list inside container
+# 5. Configure ruleset list and Active Response inside ossec.conf
+echo "==> Applying ruleset list and Active Response inside ossec.conf..."
+incus exec "$CONTAINER_NAME" -- python3 -c '
+conf_path = "/var/ossec/etc/ossec.conf"
+with open(conf_path, "r") as f:
+    content = f.read()
+
+# 1. Declare AlienVault reputation list inside <ruleset>
+if "alienvault_reputation" not in content:
+    if "</ruleset>" in content:
+        content = content.replace("</ruleset>", "    <list>etc/lists/alienvault_reputation</list>\n  </ruleset>")
+
+# 2. Insert Active Response inside <ossec_config> before closing tag
+if "100100" not in content:
+    ar_block = """
+  <!-- SSLE Active Response for All Three Syllabus Threats -->
+  <active-response>
+    <command>firewall-drop</command>
+    <location>local</location>
+    <rules_id>100100, 100101, 100102, 100104</rules_id>
+    <timeout>60</timeout>
+  </active-response>
+"""
+    if "</ossec_config>" in content:
+        content = content.replace("</ossec_config>", ar_block + "\n</ossec_config>")
+
+with open(conf_path, "w") as f:
+    f.write(content)
+'
+
+# 6. Compile CDB list inside container
 echo "==> Compiling CDB list with wazuh-makelists..."
 incus exec "$CONTAINER_NAME" -- bash -c '
     if [ -x /var/ossec/bin/wazuh-makelists ]; then
@@ -57,29 +87,17 @@ incus exec "$CONTAINER_NAME" -- bash -c '
     fi
 '
 
-# 5. Configure Active Response and rules in ossec.conf
-echo "==> Applying Active Response configuration..."
+echo "==> Setting Wazuh ownership and file permissions..."
 incus exec "$CONTAINER_NAME" -- bash -c '
-    # Ensure AlienVault list and Active Response are declared in ossec.conf if not already present
-    if ! grep -q "alienvault_reputation" /var/ossec/etc/ossec.conf; then
-        sed -i "/<\/ruleset>/i \    <list>etc/lists/alienvault_reputation</list>" /var/ossec/etc/ossec.conf
-    fi
-
-    if ! grep -q "rules_id>100100" /var/ossec/etc/ossec.conf; then
-        cat << "EOF" >> /var/ossec/etc/ossec.conf
-
-  <!-- SSLE Active Response for All Three Syllabus Threats -->
-  <active-response>
-    <command>firewall-drop</command>
-    <location>local</location>
-    <rules_id>100100, 100101, 100102, 100104</rules_id>
-    <timeout>60</timeout>
-  </active-response>
-EOF
-    fi
+    chown -R wazuh:wazuh /var/ossec/etc/ 2>/dev/null || chown -R ossec:ossec /var/ossec/etc/ 2>/dev/null || true
+    chmod 640 /var/ossec/etc/rules/local_rules.xml /var/ossec/etc/decoders/local_decoder.xml 2>/dev/null || true
+    chmod 640 /var/ossec/etc/lists/alienvault_reputation* 2>/dev/null || true
 '
 
-# 6. Restart Wazuh manager
+echo "==> Testing Wazuh Manager configuration (/var/ossec/bin/wazuh-analysisd -t)..."
+incus exec "$CONTAINER_NAME" -- /var/ossec/bin/wazuh-analysisd -t
+
+# 7. Restart Wazuh manager
 echo "==> Restarting wazuh-manager..."
 incus exec "$CONTAINER_NAME" -- systemctl restart wazuh-manager
 

@@ -1,5 +1,23 @@
 # System developed for SSLE Course
 
+This is the system developed for the first project of the SSLE course.
+
+![](/009.gif)
+
+
+## Table of Contents
+
+- [Repository Structure](#repository-structure)
+- [Send code to the VM](#send-code-to-the-vm)
+
+
+## Repository Structure
+
+This repository has the following structure:
+
+- **[README.md](README.md)**: this document.
+
+- **[test_runner.sh](test_runner.sh)**: test runner. Runs the entire testing infrastructure and ensures that tests are passing. It exists with errors in case there is a failure in the pipeline.
 
 ## Send code to the VM:
 ```bash
@@ -296,10 +314,3 @@ For the live grading demo with the professor, refer to [`DEMO_RUNBOOK.md`](DEMO_
 - The 5-stage **FCAPS Event Correlation** execution.
 - Quantitative **Scalability & Bandwidth Optimization** benchmarks.
 - Clean teardown procedures.
-
-
-
-
-
-
-
