@@ -36,16 +36,24 @@ incus exec "$TARGET_CONTAINER" -- bash -c "
 
 # 3. Configure log collection in ossec.conf
 echo "==> Configuring <localfile> log collection for /var/log/ssle/ingestion_access.log..."
-incus exec "$TARGET_CONTAINER" -- bash -c '
-    if ! grep -q "/var/log/ssle/ingestion_access.log" /var/ossec/etc/ossec.conf; then
-        cat << "EOF" >> /var/ossec/etc/ossec.conf
+incus exec "$TARGET_CONTAINER" -- python3 -c '
+conf_path = "/var/ossec/etc/ossec.conf"
+with open(conf_path, "r") as f:
+    content = f.read()
 
+localfile_block = """
+  <!-- SSLE Ingestion Gateway Apache-Compatible Access Log Ingestion -->
   <localfile>
     <log_format>apache</log_format>
     <location>/var/log/ssle/ingestion_access.log</location>
   </localfile>
-EOF
-    fi
+"""
+
+if "/var/log/ssle/ingestion_access.log" not in content:
+    if "</ossec_config>" in content:
+        content = content.replace("</ossec_config>", localfile_block + "\n</ossec_config>")
+        with open(conf_path, "w") as f:
+            f.write(content)
 '
 
 # 4. Start Wazuh agent service

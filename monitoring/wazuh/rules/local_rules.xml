@@ -30,7 +30,7 @@
 
   <!-- Rule 100102: High-Rate HTTP Flood / DoS Alert -->
   <rule id="100102" level="8" frequency="20" timeframe="5">
-    <if_group>web|access_log</if_group>
+    <if_matched_group>web</if_matched_group>
     <same_source_ip />
     <description>SSLE SIEM Alert: High-rate HTTP request flood detected from same IP</description>
     <mitre>
@@ -43,7 +43,7 @@
   <rule id="100103" level="9">
     <if_group>web|access_log</if_group>
     <match>DELETE /register/</match>
-    <field name="id">403</field>
+    <id>403</id>
     <description>SSLE SIEM Alert: Unauthorized rogue service deregistration attempt blocked</description>
     <mitre>
       <id>T1565</id>
@@ -54,7 +54,7 @@
   <rule id="100104" level="11">
     <if_group>web|access_log</if_group>
     <match>POST /ingest</match>
-    <field name="id">401</field>
+    <id>401</id>
     <description>SSLE SIEM Alert: Route/Signals Hijacking (MitM) or Cryptographic Signature Tampering detected</description>
     <mitre>
       <id>T1557</id>

@@ -88,12 +88,12 @@ Extracts telemetry and security fields from the log stream:
 ```xml
 <decoder name="ssle-accesslog">
   <type>web-log</type>
-  <prematch>^\S+ - - \[\S+ \S+\] "\S+ </prematch>
+  <prematch type="pcre2">^\S+ - - \[\S+ \S+\] "\S+ </prematch>
 </decoder>
 
 <decoder name="ssle-accesslog-fields">
   <parent>ssle-accesslog</parent>
-  <regex>^(\S+) - - \[(\S+) \S+\] "(\S+) (\S+) (\S+)" (\d+) (\d+) "(\S*)" "(.*)"</regex>
+  <regex type="pcre2">^(\S+) - - \[(\S+) \S+\] "(\S+) (\S+) (\S+)" (\d+) (\d+) "(\S*)" "(.*)"</regex>
   <order>srcip, date, action, url, protocol, id, bytes, referer, user_agent</order>
 </decoder>
 ```
