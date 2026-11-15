@@ -286,6 +286,18 @@ Evaluates Registry scaling from $10 \rightarrow 1,000$ services, bandwidth reduc
 * **Bottleneck Identified:** Ingestion gateways scale horizontally ($> 1,500\text{ req/s}$ per core), but single-node SQLite write serialization plateaus at $\approx 425\text{ req/s}$, establishing the academic motivation for Project 2's Byzantine Fault Tolerant distributed state replication.
 
 
+## In-Class Live Evaluation Runbook (`DEMO_RUNBOOK.md`)
+
+For the live grading demo with the professor, refer to [`DEMO_RUNBOOK.md`](DEMO_RUNBOOK.md) for an ordered step-by-step presentation runbook containing:
+- Cluster startup commands (Incus & Standalone mode).
+- Commands to trigger and verify each of the **Three Syllabus Threats** (Shellshock, DDoS, MitM).
+- Wazuh Active Response (`firewall-drop`) and `iptables` rule inspection.
+- The 5-stage **FCAPS Event Correlation** execution.
+- Quantitative **Scalability & Bandwidth Optimization** benchmarks.
+- Clean teardown procedures.
+
+
+
 
 
 

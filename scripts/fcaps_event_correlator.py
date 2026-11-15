@@ -33,6 +33,8 @@ def fetch_url(url, timeout=3.0):
         req = urllib.request.Request(url, headers={"User-Agent": "SSLE-FCAPS-Engine/1.0"})
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             return resp.read().decode("utf-8", errors="replace"), resp.status
+    except urllib.error.HTTPError as e:
+        return e.read().decode("utf-8", errors="replace"), e.code
     except Exception as e:
         return str(e), 500
 

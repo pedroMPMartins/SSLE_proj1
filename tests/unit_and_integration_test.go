@@ -222,7 +222,7 @@ func TestHierarchicalRegistryFeatures(t *testing.T) {
 		mu.RLock()
 		defer mu.RUnlock()
 		for _, s := range registry {
-			if s.ID == query || s.Name == query {
+			if s.ID == query || s.Name == query || s.Kind == query || strings.Contains(strings.ToLower(s.Name), strings.ToLower(query)) || strings.Contains(s.URL, query) {
 				function.RespondJSON(w, http.StatusOK, map[string]any{
 					"status":   "FOUND",
 					"incident": s.LocateIncidentDetails(),

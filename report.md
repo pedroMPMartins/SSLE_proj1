@@ -361,6 +361,8 @@ To integrate seamlessly with Wazuh, Incus multi-container networking, and hierar
 5. **[DONE]** Formulated academic critique and conceptual bridge to Project 2 (Attack Tolerance / BFT replication - Slide 13).
 6. **[DONE]** Published comprehensive academic evaluation document `docs/scalability_evaluation.md`.
 7. **[DONE]** Added automated unit test `TestRegistryScalabilityAndLookupBounds`, Go micro-benchmarks (`BenchmarkRegistryDirectLookup`, `BenchmarkHMACSignatureVerification`), and dedicated Step 8 in `test_runner.sh` with visible console benchmark reporting (100% pass).
+8. **[DONE]** Authored comprehensive Live Evaluation Runbook ([`DEMO_RUNBOOK.md`](file:///home/i/Desktop/Pedro/Universidade/4-1/SSLE/proj1/DEMO_RUNBOOK.md)) detailing step-by-step presentation commands, expected outputs, verification checks, and teardown procedures for the class evaluation (Slide 14).
+9. **[DONE]** Enhanced primary orchestrator ([`run.sh`](file:///home/i/Desktop/Pedro/Universidade/4-1/SSLE/proj1/run.sh)) into a full, color-coded, 9-stage infrastructure demonstrator. It compiles and provisions all 7 microservices and monitoring exporters, validates health, exercises dynamic hierarchical discovery and rapid incident localization, showcases defenses against all 3 syllabus threats in real-time, executes the autonomous FCAPS correlation engine, runs the quantitative scalability evaluation, and supports interactive keep-alive inspection (`--keep-alive` / `--auto`) with graceful signal handling (`Ctrl+C`).
 
 ### Phase 9: Project 1 Report Preparation (`docs/project1_report.md`)
 Draft the final academic report following the required structure from `guidelines_v0.pdf`:

@@ -173,9 +173,9 @@ func main() {
 			return
 		}
 
-		// 2. Match by FQSN or URL
+		// 2. Match by Kind, FQSN (exact or substring), or URL
 		for _, s := range registry {
-			if strings.EqualFold(s.Name, query) || strings.Contains(s.URL, query) {
+			if strings.EqualFold(s.Kind, query) || strings.EqualFold(s.Name, query) || strings.Contains(strings.ToLower(s.Name), strings.ToLower(query)) || strings.Contains(s.URL, query) {
 				function.RespondJSON(w, http.StatusOK, map[string]any{
 					"status":   "FOUND",
 					"query":    query,
