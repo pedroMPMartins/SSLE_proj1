@@ -1,0 +1,77 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{microtype}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs,tabularx,multirow}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{tikz}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+\usetikzlibrary{shapes,arrows.meta,positioning,calc,fit,backgrounds}
+\usepackage{listings}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage[numbers,sort&compress]{natbib}
+\usepackage{hyperref}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue!70!black,
+    citecolor=green!50!black,
+    urlcolor=blue!80!black
+}
+
+\lstset{
+    basicstyle=\ttfamily\footnotesize,
+    breaklines=true,
+    frame=single,
+    backgroundcolor=\color{gray!10},
+    numbers=left,
+    numberstyle=\tiny\color{gray},
+    keywordstyle=\color{blue!80!black}\bfseries,
+    commentstyle=\color{green!60!black}\itshape,
+    stringstyle=\color{red!70!black}
+}
+
+\title{\textbf{\Large Security in Large Scale Systems (SSLE) -- Project 1}\\[0.5em]
+\Large\textbf{Threat Detection, Monitoring, and Prevention in a Large-Scale Hierarchical Service-Oriented Architecture}}
+
+\author{\textbf{Pedro Martins}\\
+Department of Electronics, Telecommunications and Informatics (DETI)\\
+University of Aveiro, Portugal}
+
+\date{\textbf{November 2026}}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+As distributed systems scale to thousands of heterogeneous edge sensors and microservices, the attack surface expands exponentially while operational visibility diminishes. This paper presents the design, formal risk analysis, implementation, and empirical evaluation of a hardened Service-Oriented Architecture (SOA) engineered for large-scale telemetry ingestion, dynamic service discovery, real-time observability, and automated incident response. The proposed architecture implements a hierarchical naming taxonomy (Fully Qualified Service Names -- FQSN) that encodes geographic regions, network zones, physical bare-metal hosts, and logical container boundaries. We evaluate three primary threats mandated by the course syllabus: (1) Web Exploitation and Remote Code Execution via Shellshock (CVE-2014-6271) coupled with AlienVault IP threat intelligence; (2) Volumetric Denial of Service (DDoS) and Botnet Flooding mitigated through token-bucket rate limiting and payload clamping; and (3) Route/Signals Hijacking and Man-in-the-Middle (MitM) payload tampering countered via keyed-hash message authentication codes (HMAC-SHA256) and replay window validation. Furthermore, we instantiate an autonomous FCAPS (Fault, Configuration, Accounting, Performance, Security) fault management engine that correlates low-level Prometheus time-series metrics with Wazuh SIEM security events to localize root causes and trigger automated Active Responses (\texttt{firewall-drop}). Extensive empirical benchmarks ($N = 10 \dots 1000$ services) demonstrate sub-millisecond lookup latencies ($<0.4\,\text{ms}$) and verify a $99.99\%$ cross-region WAN bandwidth reduction via locality-aware discovery. Finally, we isolate SQLite write lock serialization as the fundamental architectural bottleneck ($\approx 425\,\text{req/s}$), providing a rigorous theoretical and empirical bridge to Project 2's Byzantine Fault Tolerant (BFT) attack-tolerant replication.
+\end{abstract}
+
+\vspace{1em}
+\noindent\textbf{Keywords:} Service-Oriented Architecture, Hierarchical Service Discovery, Threat Detection, Prometheus Observability, Wazuh SIEM, FCAPS Fault Management, HMAC Cryptography, Denial-of-Service, Byzantine Fault Tolerance.
+
+\newpage
+\tableofcontents
+\newpage
+
+\input{sections/01_introduction}
+\input{sections/02_state_of_the_art}
+\input{sections/03_architecture}
+\input{sections/04_risk_management}
+\input{sections/05_three_threats}
+\input{sections/06_fcaps_workflow}
+\input{sections/07_evaluation}
+\input{sections/08_conclusion}
+
+\bibliographystyle{plainnat}
+\bibliography{references}
+
+\end{document}

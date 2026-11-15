@@ -1,0 +1,49 @@
+\section{Relevant State of the Art}
+\label{sec:state_of_the_art}
+
+Building secure, observable, and resilient distributed architectures requires synthesizing concepts from distributed systems, telemetry collection, threat modeling, and security automation. This section establishes the theoretical foundations underpinning our solution.
+
+\subsection{Service-Oriented Architecture and Discovery Models}
+Service-Oriented Architecture (SOA) structures software applications as collections of loosely coupled, autonomous network services communicating over standardized network protocols (typically HTTP/REST, gRPC, or messaging queues). In dynamic containerized environments (e.g., Incus, Kubernetes), ephemeral IP assignments prevent hardcoding service addresses. 
+
+Service discovery registries provide dynamic binding between logical service identifiers and physical network locations (IP and port). Existing systems utilize distinct paradigms:
+\begin{itemize}
+    \item \textbf{Client-Side Discovery (e.g., Netflix Eureka):} Clients query the registry directly, cache instance endpoints, and execute client-side load balancing. This minimizes single-point-of-failure bottlenecks at the network edge but introduces client complexity.
+    \item \textbf{Server-Side / Proxy Discovery (e.g., Consul, Kubernetes DNS):} Clients issue requests to a reverse proxy or load balancer, which resolves the registry and forwards traffic. While simplifying client code, it introduces transit hops and latency overhead.
+\end{itemize}
+Most standard registries (e.g., Consul, Eureka) maintain flat, tag-based key-value maps. However, in geo-distributed or multi-tier enterprise deployments, flat registries lack native spatial awareness. When an incident occurs, resolving an IP to its physical server hardware, rack, and container environment requires cross-referencing out-of-band configuration management databases (CMDBs), introducing operational delays during critical outages.
+
+\subsection{Time-Series Monitoring with Prometheus}
+Prometheus~\citep{prometheus2026} has emerged as the cloud-native standard for systems observability. Unlike legacy push-based SNMP or push monitoring, Prometheus employs a \textbf{pull-based (scraping)} architecture:
+\begin{itemize}
+    \item A centralized Prometheus server periodically queries HTTP \texttt{/metrics} endpoints on monitored targets over HTTP.
+    \item Metrics adhere to a multi-dimensional data model defined by a metric name and key-value label pairs: $\text{metric\_name}\{\text{label}_1=\text{"val}_1\text{"}, \dots\}$.
+    \item Scraped samples are ingested into a time-series database (TSDB) using Double-Delta chunk compression for high ingest throughput.
+\end{itemize}
+Whitebox monitoring exposes internal application states (e.g., Go runtime allocations, active HTTP connection pools, request latency percentiles), whereas blackbox monitoring verifies external reachability and HTTP status codes. While Prometheus excels at high-cardinality mathematical aggregation and alerting via PromQL, it intentionally avoids event-log inspection, leaving security events invisible to the telemetry pipeline.
+
+\subsection{Security Information and Event Management (SIEM) and Wazuh}
+SIEM systems~\citep{chuvakin2012siem} provide centralized log aggregation, security event correlation, policy compliance tracking, and threat alerting. Modern open-source platforms such as Wazuh~\citep{wazuh2026} (derived from OSSEC) comprise:
+\begin{enumerate}
+    \item \textbf{Wazuh Agent:} A lightweight daemon deployed on target hosts that reads local application log streams (e.g., Apache Combined, syslog, JSON) and forwards encrypted log events over TCP/1514 to the central manager.
+    \item \textbf{Wazuh Manager:} The central analysis engine that decodes raw log strings using regular-expression-based decoders, extracts structured attributes (source IP, request URL, HTTP status code), evaluates detection rules organized in hierarchical XML trees, and maintains historical alerts.
+    \item \textbf{Constant Database (CDB) Threat Intelligence:} In-memory, compiled constant databases allowing $O(1)$ lookup matching of source IP addresses against external threat feeds (e.g., AlienVault OTX, Tor exit node lists).
+    \item \textbf{Active Response Framework:} An automated remediation mechanism that triggers localized execution scripts (such as \texttt{firewall-drop} via \texttt{iptables} or \texttt{nftables}) upon matching specified rule IDs, instantaneously severing attacker connectivity for a designated cooldown timeout.
+\end{enumerate}
+
+\subsection{Attack-Defense Trees (ADTrees)}
+Formal risk management requires structured visual and mathematical modeling of adversarial scenarios. Attack-Defense Trees (ADTrees)~\citep{kordy2014dag} extend classical Schneier attack trees by incorporating defense countermeasures directly into the tree hierarchy. 
+\begin{itemize}
+    \item An attack node ($A$) is iteratively decomposed into sub-goals using \textbf{Conjunctive (AND)} gates (all sub-attacks must succeed) or \textbf{Disjunctive (OR)} gates (any sub-attack achieves the goal).
+    \item Defense nodes ($D$) represent security mitigations that counteract specific attack sub-trees, negating their success.
+    \item Mathematical attribution assigns quantitative values to leaf nodes: attacker cost ($C_a \in \mathbb{R}^+$), required technical skill ($S_a \in \{\text{Low}, \text{Med}, \text{High}\}$), likelihood of success ($P_a \in [0, 1]$), and implementation cost of the countermeasure ($C_d$).
+\end{itemize}
+
+\subsection{The FCAPS Fault Management Model}
+The ITU-T Recommendation M.3400~\citep{itu_fcaps} formalizes the Telecommunications Management Network (TMN) framework under five operational categories: Fault, Configuration, Accounting, Performance, and Security (FCAPS). 
+
+Within FCAPS, \textbf{Fault Management} is classically decoupled from security operations: it focuses on detecting hardware and software anomalies, isolating failed components, and restoring service availability without necessarily understanding whether the fault was accidental or malicious. A robust fault management lifecycle follows five deterministic stages:
+\begin{equation}
+    \text{Detecting} \longrightarrow \text{Diagnosing \& Isolating} \longrightarrow \text{Correlating} \longrightarrow \text{Resolution/Mitigation} \longrightarrow \text{Post-Mortem}
+\end{equation}
+In modern enterprise operations, the intersection of Performance metrics and Security logs represents the frontier of automated Root Cause Analysis (RCA). Correlating Prometheus metric breaches with Wazuh security rule triggers allows automated systems to distinguish between innocent resource exhaustion (e.g., traffic organic spikes) and hostile adversarial campaigns (e.g., botnet DDoS or exploit attempts).

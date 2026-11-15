@@ -365,15 +365,20 @@ To integrate seamlessly with Wazuh, Incus multi-container networking, and hierar
 9. **[DONE]** Enhanced primary orchestrator ([`run.sh`](file:///home/i/Desktop/Pedro/Universidade/4-1/SSLE/proj1/run.sh)) into a full, color-coded, 9-stage infrastructure demonstrator. It compiles and provisions all 7 microservices and monitoring exporters, validates health, exercises dynamic hierarchical discovery and rapid incident localization, showcases defenses against all 3 syllabus threats in real-time, executes the autonomous FCAPS correlation engine, runs the quantitative scalability evaluation, and supports interactive keep-alive inspection (`--keep-alive` / `--auto`) with graceful signal handling (`Ctrl+C`).
 10. **[DONE]** Authored master single-command Incus infrastructure deployment orchestrator ([`deploy.sh`](file:///home/i/Desktop/Pedro/Universidade/4-1/SSLE/proj1/deploy.sh)) and unified teardown script ([`cleanup.sh`](file:///home/i/Desktop/Pedro/Universidade/4-1/SSLE/proj1/cleanup.sh)). Automatically provisions all 8 containers in Incus (`ssle-registry`, `ssle-storage`, `ssle-ingestion`, `ssle-analytics`, `ssle-temperature`, `ssle-exporter`, `prometheus-container`, `wazuh-container`), mounts shared database storage (`/var/lib/ssle-data`), installs systemd units, configures Prometheus with alerting rules, deploys the Wazuh SIEM Manager with custom rules/Active Response, installs the Wazuh Agent on Ingestion forwarding Apache access logs, and validates cluster health.
 
-### Phase 9: Project 1 Report Preparation (`docs/project1_report.md`)
-Draft the final academic report following the required structure from `guidelines_v0.pdf`:
-* Introduction
-* State of the Art (SOA, SIEM, Prometheus, Attack-Defense Trees)
-* Service Architecture Used (Hierarchical SOA + Ingestion Pipeline)
-* Risk Management & Mitigation (ADTree, FCAPS Fault Management)
-* Three Threats Detailed Evaluation (Shellshock/Active-Response, DDoS/Resource Exhaustion, MitM/mTLS)
-* Scalability Evaluation & Discussion of Results
-* Conclusion & Future Work (bridge to Project 2)
+### Phase 9: Project 1 Academic LaTeX Report (`report/`) — **[COMPLETED]**
+1. **[DONE]** Structured full academic report adhering strictly to the classical thesis/article structure specified in `guidelines_v0.pdf` (Slide 4).
+2. **[DONE]** Authored modular LaTeX document in [`report/`](file:///home/i/Desktop/Pedro/Universidade/4-1/SSLE/proj1/report/) with sections:
+   - Section 1: Introduction (Context, Challenges, Contributions, Outline).
+   - Section 2: Relevant State of the Art (SOA, Prometheus, Wazuh SIEM, ADTrees, FCAPS).
+   - Section 3: Service Architecture Used (7 tiers, FQSN naming hierarchy, Rapid Incident Localization API, TikZ architecture diagram).
+   - Section 4: Risk Management & Mitigation (Attack surfaces, formal ADTree with TikZ diagram, quantitative risk table).
+   - Section 5: Approach to Three Syllabus Threats (Threat 1: Shellshock/AlienVault; Threat 2: DDoS/Botnets; Threat 3: MitM/HMAC; each with Description, Relevance, Exploitation, Metrics, Active Response, PoC Post-Mortem).
+   - Section 6: Fault Management Workflow (FCAPS) & Event Correlation (Decoupling faults from security events, 5-stage lifecycle with TikZ diagram, root-cause correlation engine).
+   - Section 7: Quantitative Scalability Evaluation (Big-$O$ complexity, Go micro-benchmarks, PGFPlots latency curve up to $N=1000$, mathematical proof of 99.99% WAN bandwidth reduction, SQLite lock contention analysis).
+   - Section 8: Conclusions & Future Work (Main findings, limitations/SPOF critique, conceptual bridge to Project 2 BFT replication).
+3. **[DONE]** Formatted bibliography ([`report/references.bib`](file:///home/i/Desktop/Pedro/Universidade/4-1/SSLE/proj1/report/references.bib)) with complete academic citations (Saltzer \& Schroeder, Castro \& Liskov PBFT, Kordy et al., ITU-T FCAPS, RFC 2104, CVE-2014-6271, MITRE ATT\&CK).
+4. **[DONE]** Automated compilation via [`report/Makefile`](file:///home/i/Desktop/Pedro/Universidade/4-1/SSLE/proj1/report/Makefile) and compiled publication-ready document [`report/main.pdf`](file:///home/i/Desktop/Pedro/Universidade/4-1/SSLE/proj1/report/main.pdf) (21 pages).
+5. **[DONE]** Authored and validated [`report/compile.sh`](file:///home/i/Desktop/Pedro/Universidade/4-1/SSLE/proj1/report/compile.sh) helper script that executes the multi-pass LaTeX compilation with live console output stream (so any syntax or reference warnings/errors are immediately visible to the user) and automatically purges all intermediate build artifacts (`.aux`, `.bbl`, `.blg`, `.log`, `.out`, `.toc`), leaving only the clean final PDF.
 
 ---
 

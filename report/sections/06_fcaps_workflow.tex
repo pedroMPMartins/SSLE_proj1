@@ -1,0 +1,87 @@
+\section{Fault Management Workflow (FCAPS) \& Event Correlation}
+\label{sec:fcaps}
+
+The course guidelines (Slides 8 \& 9) explicitly mandate the integration of a Fault Management Workflow adhering to the ITU-T FCAPS model, with specific emphasis on generating events for anomalies and executing cross-domain correlation for automated root cause detection.
+
+\subsection{Decoupling Faults from Explicit Security Events}
+A fundamental principle highlighted in the course syllabus (Slide 9) is:
+\begin{quote}
+\textit{Fault Management within FCAPS does not deal with security events (i.e., at least explicit security events).}
+\end{quote}
+In operational environments, telemetry probes and health checks observe \textit{symptoms} (e.g., a gateway is returning \texttt{HTTP 500}, latency has surged from $2\,\text{ms}$ to $350\,\text{ms}$, or CPU utilization has hit $98\%$). A pure fault management system observes the degradation but cannot discern whether the fault was caused by a memory leak, network congestion, an aggressive database lock, or a distributed volumetric DDoS attack. 
+
+Conversely, SIEM logs capture \textit{malicious intent} (e.g., an unauthorized IP injecting shell strings or modifying HMAC signatures) but have no visibility into how severely the target service is degrading. 
+
+Our architecture bridges this gap: we implement a multi-layered correlation engine that uses operational symptoms from Prometheus as the initial trigger, then correlates with Wazuh SIEM security logs to establish causality.
+
+\subsection{The 5-Stage FCAPS Operational Lifecycle}
+Figure~\ref{fig:fcaps} illustrates the 5-stage closed-loop fault management architecture implemented in \texttt{scripts/fcaps\_event\_correlator.py}.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[
+    node distance=0.6cm and 0.8cm,
+    stage/.style={rectangle, draw=blue!80!black, fill=blue!10, rounded corners, thick, minimum width=2.6cm, minimum height=1.1cm, align=center, font=\scriptsize\bfseries},
+    edge/.style={-Latex, thick, draw=black!75}
+]
+
+\node[stage] (s1) {Stage 1: Detecting\\(Prometheus Telemetry\\Anomaly Thresholds)};
+\node[stage, right=of s1] (s2) {Stage 2: Isolating\\(Hierarchical Scope\\Narrowing via FQSN)};
+\node[stage, right=of s2] (s3) {Stage 3: Correlating\\(Cross-Domain Metric\\\& Log RCA Engine)};
+\node[stage, below=1.0cm of s3] (s4) {Stage 4: Mitigation\\(Active Response \&\\Automated Quarantine)};
+\node[stage, left=of s4] (s5) {Stage 5: Post-Mortem\\(Baseline Restoration\\\& Verification Report)};
+
+\draw[edge] (s1) -- (s2);
+\draw[edge] (s2) -- (s3);
+\draw[edge] (s3) -- (s4);
+\draw[edge] (s4) -- (s5);
+\draw[edge, dashed, draw=blue!70!black] (s5) -| node[near end, left, font=\tiny] {Return to Baseline Nominal State} (s1);
+
+\end{tikzpicture}
+\caption{The 5-Stage FCAPS Fault Management and Event Correlation Architecture.}
+\label{fig:fcaps}
+\end{figure}
+
+\subsubsection{Stage 1: Detecting (Telemetry Metric Anomaly Polling)}
+The engine continuously samples operational metrics exposed by the Health Exporter (\texttt{:8000}) and Diagnostics Exporter (\texttt{:8001}). It evaluates anomalies against formal statistical thresholds:
+\begin{itemize}
+    \item \textbf{Service Liveness Failure:} $\texttt{service\_health} = 0$ (critical service outage).
+    \item \textbf{Latency Spike Anomaly:} $\texttt{service\_response\_time\_seconds} > 0.150\,\text{s}$ (performance degradation).
+    \item \textbf{Failure Rate Surge:} $\texttt{service\_error\_rate\_percent} > 10.0\%$ (reliability breach).
+    \item \textbf{CPU Starvation:} $\texttt{service\_cpu\_percent} > 80.0\%$ (resource saturation).
+\end{itemize}
+If any metric violates thresholds, an \texttt{INCIDENT\_DETECTED} event is instantiated.
+
+\subsubsection{Stage 2: Diagnosing \& Isolating (Location Mapping \& Scope Narrowing)}
+To avoid global alert cascades, the engine queries the Service Registry's incident localization API:
+\begin{equation}
+    \texttt{GET http://ssle-registry.incus:5050/services/locate/ingestion}
+\end{equation}
+The registry returns the FQSN hierarchy, resolving the exact physical blade (\texttt{kali-vm}), virtualization container (\texttt{incus:ssle-ingestion}), and administrative domain (\texttt{pt-aveiro.lab-ssle}). This narrows the investigation boundary exclusively to the impacted node.
+
+\subsubsection{Stage 3: Correlating (Cross-Domain Root Cause Analysis)}
+The correlation engine synthesizes operational telemetry with the SIEM security event log (\texttt{/var/log/ssle/ingestion\_access.log}) over a sliding inspection window. It executes deterministic causal mapping:
+\begin{itemize}
+    \item \textbf{Scenario A (Unplanned Infrastructure Outage):} High error rate + liveness failure, but \textit{zero} security alerts in SIEM $\Longrightarrow$ Root Cause: \textbf{APPLICATION\_FAULT / UNPLANNED\_OUTAGE}.
+    \item \textbf{Scenario B (Volumetric Denial-of-Service):} Latency spike ($>150\,\text{ms}$) + CPU saturation ($>80\%$) + Wazuh Rule 100102 alerts $\Longrightarrow$ Root Cause: \textbf{EXPLOITATION\_DDOS\_FLOOD}. Source IP isolated.
+    \item \textbf{Scenario C (Cryptographic Integrity Tampering):} Elevated error rate ($\texttt{HTTP 401}$) + Wazuh Rule 100104 alerts $\Longrightarrow$ Root Cause: \textbf{INTEGRITY\_VIOLATION\_MITM}. Attacker IP isolated.
+    \item \textbf{Scenario D (Exploit Probing):} Elevated error rate ($\texttt{HTTP 403}$) + Wazuh Rule 100100/100101 alerts $\Longrightarrow$ Root Cause: \textbf{EXPLOITATION\_SHELLSHOCK}. Attacker IP isolated.
+\end{itemize}
+
+\subsubsection{Stage 4: Resolution / Mitigation (Active Response Execution)}
+Upon identifying the causal root, the engine triggers automated remediation:
+\begin{itemize}
+    \item If a malicious IP is identified, Wazuh Active Response applies an immediate \texttt{firewall-drop} rule on the gateway's network namespace for 60 seconds.
+    \item If an internal application fault is identified, a container restart hook is dispatched: \texttt{incus restart ssle-ingestion}.
+\end{itemize}
+
+\subsubsection{Stage 5: Post-Mortem \& Recovery Verification}
+Following mitigation, the engine waits for a stabilization cooldown (5 seconds) and issues synthetic verification probes:
+\begin{itemize}
+    \item Queries the service \texttt{/health} endpoint to verify restoration of HTTP 200 OK.
+    \item Confirms response latency has dropped below the baseline threshold ($<20\,\text{ms}$).
+    \item Compiles an immutable JSON incident report capturing incident timeline, metric breach snapshots, correlated rule IDs, identified source IPs, and mitigation timestamps.
+\end{itemize}
+
+\subsection{Empirical Validation of the Correlation Engine}
+During end-to-end testing, when an adversary fired Shellshock injection probes at the gateway, the correlation engine detected the error rate anomaly within $2.1\,\text{seconds}$, queried the registry to localize the affected container to \texttt{incus:ssle-ingestion}, identified Wazuh Rule 100100 in the access log, triggered an automated firewall drop on \texttt{127.0.0.1}, and verified baseline recovery, reducing Mean Time to Remediate (MTTR) from minutes to seconds.

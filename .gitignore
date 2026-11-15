@@ -2,3 +2,13 @@ bin/
 temp_data.db
 certs/
 
+# Latex
+*.aux
+*.bbl
+*.blg
+*.log
+*.out
+*.toc
+*.gz
+*.fls
+*.fdb_latexmk

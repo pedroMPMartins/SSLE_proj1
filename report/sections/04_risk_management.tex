@@ -1,0 +1,80 @@
+\section{Risk Management and Mitigation}
+\label{sec:risk_management}
+
+Systematic defense requires mapping the system's attack surfaces and formally modeling how adversaries navigate multi-step attack vectors to achieve their goals.
+
+\subsection{Attack Surface Decomposition}
+The microservice architecture presents four primary attack surfaces:
+\begin{enumerate}
+    \item \textbf{Perimeter Ingestion Surface (\texttt{:5001}):} Public-facing HTTP endpoints accepting external telemetry from IoT field sensors. Exposed to untrusted WAN networks, unauthenticated input floods, header-based code injection attacks, and payload bloat.
+    \item \textbf{Service Registry Catalog (\texttt{:5050}):} Internal discovery control plane. If left unauthenticated, adversaries could inject rogue service definitions (redirecting traffic to malicious sinks) or execute rogue deregistration attacks (\texttt{DELETE /register/\{id\}}), creating an operational Denial-of-Service.
+    \item \textbf{Inter-Service Network Transit:} Unencrypted communications between the Ingestion Gateway and Storage (\texttt{:5002}) or Analytics (\texttt{:5003}) traverse local bridge networks. Adversaries with local access or compromised container neighbors could intercept packets, modify values in flight, or replay historical readings.
+    \item \textbf{Persistent Storage Layer (\texttt{/data/temp\_data.db}):} Relational SQLite database shared via host bind-mounts. Subject to concurrent write contention, disk exhaustion, and unauthorized data corruption if container boundaries are breached.
+\end{enumerate}
+
+\subsection{Formal Attack-Defense Tree (ADTree)}
+To evaluate threat interactions, we construct an Attack-Defense Tree~\citep{kordy2014dag} rooted at the adversarial objective: \textbf{Compromise Telemetry System Availability, Integrity, or Confidentiality}. Figure~\ref{fig:adtree} illustrates the conjunctive/disjunctive decomposition and deployed security countermeasures.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[
+    scale=0.85, transform shape,
+    goal/.style={rectangle, draw=red!80!black, fill=red!15, rounded corners, thick, align=center, font=\footnotesize\bfseries, minimum height=0.9cm},
+    attack/.style={rectangle, draw=red!70!black, fill=red!5, rounded corners, thick, align=center, font=\scriptsize, minimum height=0.8cm},
+    defense/.style={rectangle, draw=green!60!black, fill=green!15, rounded corners, thick, align=center, font=\scriptsize, minimum height=0.8cm},
+    gate/.style={circle, draw=black!80, fill=gray!20, thick, font=\tiny\bfseries, inner sep=1.5pt},
+    edge/.style={-Latex, thick, draw=black!70},
+    defedge/.style={-Latex, dashed, thick, draw=green!60!black}
+]
+
+% Root
+\node[goal] (root) {Compromise SSLE Telemetry Architecture};
+
+% Tier 1 Attacks
+\node[attack, below left=1.2cm and 3.5cm of root] (t1) {T1: Remote Code\\Execution (Shellshock)};
+\node[attack, below left=1.2cm and 0.8cm of root] (t2) {T2: Volumetric DoS\\\& Resource Exhaustion};
+\node[attack, below right=1.2cm and 0.8cm of root] (t3) {T3: In-Flight MitM\\Payload Tampering};
+\node[attack, below right=1.2cm and 3.5cm of root] (t4) {T4: Service Registry\\Rogue Deregistration};
+
+\draw[edge] (root) -- (t1);
+\draw[edge] (root) -- (t2);
+\draw[edge] (root) -- (t3);
+\draw[edge] (root) -- (t4);
+
+% Defenses
+\node[defense, below=0.8cm of t1] (d1) {D1: Shellshock Regex\\Filter \& Wazuh Active\\Response (\texttt{firewall-drop})};
+\node[defense, below=0.8cm of t2] (d2) {D2: Token Bucket Rate\\Limiter (15 rps) \&\\Payload Clamp (1 MB)};
+\node[defense, below=0.8cm of t3] (d3) {D3: HMAC-SHA256\\Signatures \& 10s\\Replay Window Drift};
+\node[defense, below=0.8cm of t4] (d4) {D4: Bearer Admin\\Token Auth \& FQSN\\Consistency Checks};
+
+\draw[defedge] (d1) -- node[right, font=\tiny] {Mitigates} (t1);
+\draw[defedge] (d2) -- node[right, font=\tiny] {Throttles} (t2);
+\draw[defedge] (d3) -- node[right, font=\tiny] {Rejects} (t3);
+\draw[defedge] (d4) -- node[right, font=\tiny] {Denies} (t4);
+
+\end{tikzpicture}
+\caption{Attack-Defense Tree (ADTree) for Project 1: Adversarial threats ($T_1 \dots T_4$) and their corresponding cryptographic, rate-limiting, and SIEM countermeasures ($D_1 \dots D_4$).}
+\label{fig:adtree}
+\end{figure}
+
+\subsection{Quantitative Threat Attribution}
+To ground the security analysis in measurable metrics, Table~\ref{tab:threat_metrics} evaluates the adversary cost, technical skill required, probability of occurrence, and defense effectiveness for each modeled vector.
+
+\begin{table}[htbp]
+\centering
+\small
+\caption{Quantitative Risk Assessment and Defense Metrics.}
+\label{tab:threat_metrics}
+\begin{tabularx}{\textwidth}{lccccX}
+\toprule
+\textbf{Threat Vector} & \textbf{Skill} & \textbf{Attacker Cost} & \textbf{Likelihood} & \textbf{Impact} & \textbf{Deployed Countermeasure} \\
+\midrule
+\textbf{T1: Shellshock RCE} & Low & Low & High & Critical & Input filter rejects \texttt{() \{ :;\}} with 403; Wazuh Rule 100100 drops IP for 60s. \\
+\textbf{T2: Volumetric DoS} & Low & Medium & High & High & Token-bucket ($15\,\text{rps}$) throttles with 429; payload clamped at $1\,\text{MB}$ (400). \\
+\textbf{T3: MitM Tampering} & Medium & Medium & Medium & High & HMAC-SHA256 rejects modified bytes with 401; timestamp window rejects replays ($>10\,\text{s}$). \\
+\textbf{T4: Registry Hijacking} & Low & Low & Medium & Critical & Admin Token authentication enforces 403 on unauthorized service deletions. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+By implementing defenses across layers (network, gateway middleware, cryptography, and SIEM active response), the architecture adheres to Saltzer and Schroeder's classic security principles~\citep{saltzer1975protection}: \textit{Defense in Depth}, \textit{Complete Mediation}, and \textit{Fail-Safe Defaults}.

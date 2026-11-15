@@ -1,0 +1,36 @@
+\section{Conclusions and Future Work}
+\label{sec:conclusion}
+
+This paper presented the comprehensive architectural design, implementation, formal threat modeling, and empirical evaluation of a hardened Service-Oriented Architecture for Project 1 of Security in Large Scale Systems (SSLE).
+
+\subsection{Summary of Main Findings and Contributions}
+The major achievements of this project are:
+\begin{enumerate}
+    \item \textbf{Hierarchical Service Identification (FQSN):} Developed a multi-tier naming taxonomy (\texttt{region.zone.host.container.uuid.kind}) that encodes geographic delegation, physical host identity, and container virtualization boundaries. Integrated an $O(1)$ incident localization API (\texttt{GET /services/locate/\{query\}}) that instantly maps affected components to their physical and logical environments.
+    \item \textbf{Comprehensive Threat Defense Triad:} Successfully engineered, tested, and demonstrated active defenses against all three syllabus-mandated threats:
+    \begin{itemize}
+        \item \textit{Web Exploitation / RCE:} Blocked Shellshock (CVE-2014-6271) command injections via regex header filtering, logged structured Apache-format access events, and triggered automated Wazuh Active Response (\texttt{firewall-drop}) based on signature matching and AlienVault IP reputation CDB lookup.
+        \item \textit{Volumetric DDoS \& Botnets:} Mitigated high-frequency request floods via a token-bucket rate limiter ($15\,\text{rps}$) returning \texttt{HTTP 429}, clamped request bodies to $1\,\text{MB}$ via \texttt{MaxBytesReader} returning \texttt{HTTP 400}, and instrumented real-time Prometheus diagnostics metrics.
+        \item \textit{Route \& Signals Hijacking (MitM):} Ensured end-to-end data integrity and origin authenticity through HMAC-SHA256 constant-time verification, while rejecting stale replayed telemetry via a strict 10-second timestamp drift validation window.
+    \end{itemize}
+    \item \textbf{Autonomous FCAPS Event Correlation:} Implemented a 5-stage closed-loop fault management engine that bridges operational metrics and security logs, automating the root-cause deduction process and triggering targeted mitigations.
+    \item \textbf{Quantitative Scalability Verification:} Empirically confirmed sub-millisecond lookup latency up to $N = 1000$ services and mathematically and empirically demonstrated a $99.99\%$ cross-region WAN bandwidth reduction through locality-aware discovery.
+\end{enumerate}
+
+\subsection{Critical Discussion of System Limitations}
+As highlighted in the course guidelines (Slide 13), evaluating why a solution is not perfect provides critical engineering insight:
+\begin{itemize}
+    \item \textbf{In-Memory Service Registry as a SPOF:} While the Service Registry provides $O(1)$ lookup performance and sub-millisecond response times, it currently operates as an in-memory process. If the registry container terminates or suffers hardware failure, discovery state is lost, and clients cannot dynamically locate peer services until recovery.
+    \item \textbf{Storage Write Serialization:} As revealed in our concurrency benchmarks (Section~\ref{sec:bottleneck}), single-node SQLite architecture hits severe write lock contention (\texttt{SQLITE\_BUSY}) at $\approx 425\,\text{req/s}$, creating an architectural bottleneck for large sensor fleets.
+    \item \textbf{Symmetric Key Distribution Overhead:} While HMAC-SHA256 provides computational efficiency ($\approx 1.9\,\mu\text{s/op}$), it relies on a pre-shared symmetric key. In massive deployments with millions of heterogeneous edge nodes, managing, rotating, and revoking shared secrets introduces operational complexity.
+\end{itemize}
+
+\subsection{Future Work: Architectural Bridge to Project 2}
+These identified limitations directly establish the roadmap for **Project 2: Attack Tolerance Mechanisms (Due December 23 -- Slides 2 \& 13)**:
+\begin{enumerate}
+    \item \textbf{Byzantine Fault Tolerant (BFT) State Machine Replication:} Replace the single-node SQLite storage service with a distributed quorum-based state machine replication protocol (e.g., PBFT~\citep{castro2002practical} or Raft). This will eliminate the single point of failure and write lock saturation, allowing the telemetry cluster to maintain continuous availability and data consistency even when a subset of nodes are compromised by arbitrary Byzantine adversaries.
+    \item \textbf{Decentralized Registry Clustering:} Implement peer-to-peer gossip protocols or distributed hash tables (DHT) across regional registries to ensure zero-downtime service discovery under network partitions.
+    \item \textbf{Asymmetric Mutual TLS (mTLS) with Hardware Roots of Trust:} Transition from symmetric HMAC keys to mutual TLS with automated short-lived certificate rotation (via Let's Encrypt / Vault) anchored in hardware TPM/secure elements at the edge.
+\end{enumerate}
+
+In conclusion, Project 1 demonstrates that combining hierarchical service discovery, multi-layered gateway hardening, real-time Prometheus observability, Wazuh SIEM active response, and closed-loop FCAPS correlation creates an observable, high-performance, and resilient foundation for large-scale distributed systems.

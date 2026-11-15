@@ -1,0 +1,109 @@
+\section{Service Architecture Used}
+\label{sec:architecture}
+
+To satisfy the scalability, observability, and threat-resilience mandates of Project 1, we implemented a modular, 7-tier Service-Oriented Architecture deployed across isolated Linux Containers (Incus). The complete architectural topology and data flow are illustrated in Figure~\ref{fig:architecture}.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[
+    node distance=1.2cm and 1.5cm,
+    service/.style={rectangle, draw=blue!70!black, fill=blue!10, rounded corners, thick, minimum width=2.4cm, minimum height=1.0cm, align=center, font=\footnotesize\bfseries},
+    monitor/.style={rectangle, draw=green!60!black, fill=green!10, rounded corners, thick, minimum width=2.4cm, minimum height=1.0cm, align=center, font=\footnotesize\bfseries},
+    security/.style={rectangle, draw=red!70!black, fill=red!10, rounded corners, thick, minimum width=2.4cm, minimum height=1.0cm, align=center, font=\footnotesize\bfseries},
+    storage/.style={cylinder, shape border rotate=90, draw=orange!80!black, fill=orange!15, aspect=0.25, thick, minimum width=2.2cm, minimum height=1.2cm, align=center, font=\footnotesize\bfseries},
+    edge/.style={-Latex, thick, draw=black!70},
+    secedge/.style={-Latex, dashed, thick, draw=red!70!black}
+]
+
+% Nodes
+\node[service] (sensor) {Edge Sensor\\(\texttt{:5000})};
+\node[service, right=of sensor] (ingest) {Ingestion Gateway\\(\texttt{:5001})};
+\node[service, above=of ingest] (registry) {Service Registry\\(\texttt{:5050})};
+\node[storage, right=of ingest] (storage) {Storage Service\\(\texttt{:5002})};
+\node[service, right=of storage] (analytics) {Analytics Worker\\(\texttt{:5003})};
+
+\node[monitor, below=of registry] (health) {Health Exporter\\(\texttt{:8000})};
+\node[monitor, below=of ingest] (diag) {Diagnostics Exporter\\(\texttt{:8001})};
+\node[monitor, below=of health] (prom) {Prometheus Server\\(\texttt{:9090})};
+\node[security, below=of diag] (wazuh) {Wazuh Manager\\(\texttt{:1514})};
+
+% Data flow connections
+\draw[edge] (sensor) -- node[above, font=\tiny] {HMAC Sign} node[below, font=\tiny] {\texttt{POST /ingest}} (ingest);
+\draw[edge] (ingest) -- node[above, font=\tiny] {\texttt{POST /store}} (storage);
+\draw[edge] (storage) -- node[above, font=\tiny] {Read SQLite} (analytics);
+
+% Registry connections
+\draw[edge, dashed, draw=blue!70!black] (sensor) |- node[near start, left, font=\tiny] {Heartbeat} (registry);
+\draw[edge, dashed, draw=blue!70!black] (ingest) -- node[left, font=\tiny] {Resolve Storage} (registry);
+\draw[edge, dashed, draw=blue!70!black] (storage) |- (registry);
+\draw[edge, dashed, draw=blue!70!black] (analytics) |- (registry);
+
+% Observability connections
+\draw[edge, draw=green!60!black] (health) -- (registry);
+\draw[edge, draw=green!60!black] (diag) -- (ingest);
+\draw[edge, draw=green!60!black] (prom) -- node[right, font=\tiny] {Scrape :8000} (health);
+\draw[edge, draw=green!60!black] (prom) -| node[near end, left, font=\tiny] {Scrape :8001} (diag);
+
+% Security connections
+\draw[secedge] (ingest) -- node[left, font=\tiny] {Access Logs} (wazuh);
+\draw[secedge] (wazuh) -| node[near start, above, font=\tiny] {Active Response: \texttt{firewall-drop}} (ingest);
+
+\end{tikzpicture}
+\caption{End-to-End SSLE Project 1 Architecture: Multi-tier microservices, dual Prometheus observability exporters, Wazuh SIEM log shipping, and automated Active Response feedback loop.}
+\label{fig:architecture}
+\end{figure}
+
+\subsection{Microservice Functional Decoupling}
+The architecture decomposes application concerns into distinct microservices:
+\begin{enumerate}
+    \item \textbf{Service Registry (\texttt{:5050}):} Acts as the authoritative, in-memory catalog of all running services. Maintains location metadata, enforces token-based administrative protection for service deregistration, and supports location-filtered queries.
+    \item \textbf{Edge Temperature Sensor (\texttt{:5000}):} Simulates IoT edge sensor hardware. Emits periodic temperature telemetry samples, dynamically computes HMAC-SHA256 integrity signatures, attaches Unix epoch timestamps, and queries the registry to locate the ingestion gateway.
+    \item \textbf{Hardened Ingestion Gateway (\texttt{:5001}):} The perimeter microservice facing external networks. Enforces defense-in-depth: token-bucket rate limiting ($15\,\text{req/s}$ burst threshold), HTTP payload size clamping ($1\,\text{MB}$ via \texttt{MaxBytesReader}), Shellshock CVE-2014-6271 header inspection, and cryptographic HMAC signature and timestamp replay validation. Outputs structured Apache Combined access logs to \texttt{/var/log/ssle/ingestion\_access.log} for SIEM processing.
+    \item \textbf{Storage Service (\texttt{:5002}):} Interacts with an embedded SQLite relational database located on a mounted storage volume (\texttt{/data/temp\_data.db}), providing indexed schema persistence for time-series temperature tuples.
+    \item \textbf{Analytics Service (\texttt{:5003}):} Reads persisted readings from the database, computes sliding-window statistical metrics (mean temperature), and exposes analytical endpoints (\texttt{/average}).
+    \item \textbf{Prometheus Health Exporter (\texttt{:8000}):} Periodically polls liveness and readiness endpoints of all microservices, attaching dimensional location labels to exportable Prometheus gauges.
+    \item \textbf{Prometheus Diagnostics Exporter (\texttt{:8001}):} Instruments runtime operational performance: requests per second (RPS), CPU utilization percent, memory allocations, and HTTP error rate percentages.
+\end{enumerate}
+
+\subsection{Hierarchical Identification and Fully Qualified Service Names (FQSN)}
+A core requirement of Project 1 (Slides 4 \& 7) is the identification and registration of elements in a scalable, location-aware structure that encodes physical hardware, logical container virtualization, and geographic delegation of responsibility.
+
+To eliminate namespace collisions and enable instant incident localization, we formulated the \textbf{Fully Qualified Service Name (FQSN)} schema:
+\begin{equation}
+    \text{FQSN} = \langle\text{region}\rangle.\langle\text{zone}\rangle.\langle\text{physical\_host}\rangle.\langle\text{logical\_env}\rangle.\langle\text{instance\_id}\rangle.\langle\text{kind}\rangle
+\end{equation}
+A concrete instantiation of this naming standard in our testbed is:
+\begin{lstlisting}[language=bash]
+pt-aveiro.lab-ssle.kali-vm.incus:ssle-ingestion.a1b2c3d4.ingestion
+\end{lstlisting}
+The semantic components of this hierarchy provide distinct operational capabilities:
+\begin{itemize}
+    \item \textbf{Geographic Administrative Boundary (\texttt{pt-aveiro.lab-ssle}):} Designates regional authority, regulatory jurisdiction (e.g., GDPR data residency), and network routing boundaries.
+    \item \textbf{Physical Infrastructure Layer (\texttt{kali-vm}):} Identifies the bare-metal hypervisor, physical blade server, or host machine.
+    \item \textbf{Logical Virtualization Layer (\texttt{incus:ssle-ingestion}):} Identifies the isolated Linux container, profile, and cgroup boundary.
+    \item \textbf{Ephemeral Instance Identifier (\texttt{a1b2c3d4}):} A cryptographically random hex UUID ensuring idempotency and collision avoidance during autoscaling.
+    \item \textbf{Functional Service Class (\texttt{ingestion}):} Defines the functional interface contract and routing target.
+\end{itemize}
+
+\subsection{Rapid Incident Localization API}
+When an alert fires in production, resolving an alert to the exact container and physical host is critical for Mean Time to Repair (MTTR). The Service Registry implements a specialized localization endpoint:
+\begin{equation}
+    \texttt{GET /services/locate/\{query\}}
+\end{equation}
+where \texttt{\{query\}} accepts an instance ID, exact/partial FQSN, endpoint URL, or functional kind. The registry resolves the query in $O(1)$ time, returning a structured remediation payload (Listing~\ref{lst:locate}).
+
+\begin{lstlisting}[caption={Rapid Incident Localization Response for \texttt{ingestion}.}, label={lst:locate}]
+{
+  "status": "FOUND",
+  "query": "ingestion",
+  "incident": {
+    "fqsn": "pt-aveiro.lab-ssle.kali-vm.incus:ssle-ingestion.9494d3aa.ingestion",
+    "physical_host": "kali-vm",
+    "logical_env": "incus:ssle-ingestion",
+    "administrative_domain": "pt-aveiro.lab-ssle",
+    "url": "http://ssle-ingestion.incus:5001",
+    "remediation_hint": "Run to inspect container: incus exec ssle-ingestion -- journalctl -u ssle-ingestion -n 50"
+  }
+}
+\end{lstlisting}
+This allows monitoring engines, operators, and automated SIEM response scripts to instantly identify the host to inspect or container to isolate without manual cross-referencing.

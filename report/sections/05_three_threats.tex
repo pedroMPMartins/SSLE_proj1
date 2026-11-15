@@ -1,0 +1,138 @@
+\section{Approach to Three Syllabus Threats}
+\label{sec:three_threats}
+
+As mandated by the course guidelines (Slides 6, 10, and 12), this section provides a detailed analysis of three threats selected from the syllabus: (1) Web Exploitation and Command Injection; (2) Massive Denial-of-Service (DDoS) Disruptions and Botnets; and (3) Route and Signals Hijacking / Man-in-the-Middle (MitM). For each threat, we follow the structured evaluation framework: description, system relevance, exploitation mechanics, monitoring/metrics, active responses, and proof-of-concept post-mortem.
+
+% ==============================================================================
+\subsection{Threat 1: Web Exploitation \& Command Injection (Shellshock CVE-2014-6271)}
+\label{sec:threat1}
+
+\paragraph{1. Threat Description:}
+Shellshock (CVE-2014-6271)~\citep{cve20146271} is a critical vulnerability in GNU Bash that allows remote code execution (RCE) by attaching trailing shell commands to environment variable function definitions of the form \texttt{() \{ :; \}; <command>}. When web gateways forward HTTP headers (such as \texttt{User-Agent} or \texttt{Referer}) into backend CGI scripts or shell environments, Bash executes the arbitrary payload with the privileges of the web process. In parallel, malicious scanners continuously probe public IP ranges using known botnet IPs cataloged in threat intelligence feeds (e.g., AlienVault OTX).
+
+\paragraph{2. System Relevance:}
+The Ingestion Gateway (\texttt{ssle-ingestion}) is exposed to external, untrusted networks. While the Go gateway itself is compiled and does not spawn subshells for request routing, real-world microservice environments frequently employ bash-based diagnostic scripts, health check hooks, or legacy reverse-proxy wrappers. Unchecked headers could compromise adjacent container runtimes or escape into the host.
+
+\paragraph{3. Exploitation Mechanics:}
+An adversary sends an HTTP POST request to \texttt{/ingest} with a malicious payload injected into the \texttt{User-Agent} header:
+\begin{lstlisting}[language=bash]
+curl -X POST http://ssle-ingestion.incus:5001/ingest \
+  -H "User-Agent: () { :; }; /bin/cat /etc/passwd" \
+  -H "Content-Type: application/json" \
+  -d '{"device_id":"sensor-01","temperature":22.5}'
+\end{lstlisting}
+
+\paragraph{4. Monitoring \& Mitigation Actions:}
+We implement a two-tier defense:
+\begin{itemize}
+    \item \textbf{Gateway Header Filtering:} Ingestion middleware scans all inbound headers against the regular expression \texttt{\textbackslash(\textbackslash)\textbackslash s*\{\textbackslash s*:;\textbackslash s*\};}. Any matching request is immediately aborted with \texttt{HTTP 403 Forbidden} before reaching application logic.
+    \item \textbf{Structured SIEM Logging:} The gateway records an Apache Combined access log entry containing the exact attacker IP, timestamp, method, URI, HTTP 403 status, and the raw \texttt{User-Agent} string.
+\end{itemize}
+
+\paragraph{5. Action-Responses Adopted (Wazuh SIEM):}
+Wazuh Manager inspects the access log using custom detection rules:
+\begin{itemize}
+    \item \textbf{Rule 100100 (Level 12):} Matches the Shellshock signature in the \texttt{User-Agent} string.
+    \item \textbf{Rule 100101 (Level 10):} Matches the source IP against the compiled AlienVault CDB reputation database (\texttt{etc/lists/alienvault\_reputation.cdb}).
+    \item \textbf{Active Response (\texttt{firewall-drop}):} Wazuh executes \texttt{firewall-drop} on the offending source IP, issuing an \texttt{iptables -I INPUT -s <IP> -j DROP} rule for 60 seconds.
+\end{itemize}
+
+\paragraph{6. PoC Post-Mortem:}
+Execution during live demonstration confirmed: (1) the adversary probe was instantly blocked with \texttt{HTTP 403}; (2) Wazuh generated alert 100100; and (3) subsequent connection attempts from the attacker IP were dropped at the packet filtering layer.
+
+% ==============================================================================
+\subsection{Threat 2: Massive Denial-of-Service (DDoS) Disruptions \& Botnets}
+\label{sec:threat2}
+
+\paragraph{1. Threat Description:}
+Volumetric Denial-of-Service attacks occur when coordinated botnets overwhelm ingestion endpoints by transmitting high-frequency request floods or excessively large payloads. The resulting CPU saturation, socket exhaustion, and database lock contention starve legitimate edge sensors, causing data loss and telemetry gaps.
+
+\paragraph{2. System Relevance:}
+Edge sensors operate with constrained transmission buffers. If the ingestion gateway drops packets or hangs on socket read buffers due to volumetric resource starvation, critical industrial temperature excursions or environmental anomalies remain undetected.
+
+\paragraph{3. Exploitation Mechanics:}
+We developed a multi-threaded stress harness (\texttt{cmd/attacker}) capable of firing concurrent bursts ($>200\,\text{req/s}$) or multi-megabyte payloads ($>2\,\text{MB}$) to saturate the gateway thread pool:
+\begin{lstlisting}[language=bash]
+./bin/attacker -target http://ssle-ingestion.incus:5001 -mode flood -concurrency 25 -delay 5
+\end{lstlisting}
+
+\paragraph{4. Monitoring \& Mitigation Actions:}
+We engineered multi-layered target hardening inside the Go Ingestion Gateway:
+\begin{itemize}
+    \item \textbf{Token-Bucket Rate Limiter:} Implements an in-memory token-bucket algorithm per client IP allowing a sustained rate of $r = 15.0\,\text{req/s}$ with a maximum burst capacity of $b = 15$ tokens. When tokens are exhausted, excess requests are rejected with \texttt{HTTP 429 Too Many Requests}.
+    \item \textbf{Payload Clamping:} Wrapping request body readers with \texttt{http.MaxBytesReader(w, r.Body, 1048576)} enforces a hard $1\,\text{MB}$ boundary, rejecting bloated payloads with \texttt{HTTP 400 Bad Request}.
+    \item \textbf{Diagnostics Exporter Instrumentation:} The Diagnostics Exporter (\texttt{:8001}) instruments real-time requests-per-second (\texttt{service\_requests\_per\_second}) and CPU utilization percent (\texttt{service\_cpu\_percent}).
+\end{itemize}
+
+\paragraph{5. Action-Responses Adopted (Wazuh SIEM):}
+When high-rate floods exceed 20 requests within 5 seconds from the same source IP:
+\begin{itemize}
+    \item \textbf{Wazuh Rule 100102 (Level 8):} Detects frequency surge via \texttt{<if\_matched\_group>web</if\_matched\_group>} and \texttt{<same\_source\_ip />}.
+    \item \textbf{Active Response:} Triggers \texttt{firewall-drop} on the flooding botnet IP, restoring gateway throughput for legitimate clients.
+\end{itemize}
+
+\paragraph{6. PoC Post-Mortem:}
+Under a 20-request burst, the gateway successfully throttled 19 out of 20 flood requests with \texttt{HTTP 429}, and rejected a $2\,\text{MB}$ payload with \texttt{HTTP 400}. PromQL alerts detected the traffic surge within 5 seconds, triggering automated IP quarantine.
+
+% ==============================================================================
+\subsection{Threat 3: Route \& Signals Hijacking / Man-in-the-Middle (MitM)}
+\label{sec:threat3}
+
+\paragraph{1. Threat Description:}
+In distributed telemetry systems traversing WAN connections or untrusted wireless gateways, adversaries positioned on intermediate network routers (or rogue ARP spoofers) can intercept unauthenticated HTTP traffic. Adversaries can alter payload values in transit (e.g., modifying dangerous $98.5^\circ\text{C}$ furnace spikes to normal $21.0^\circ\text{C}$ to evade alarms) or capture valid packets and replay them maliciously.
+
+\paragraph{2. System Relevance:}
+Data integrity is paramount in industrial telemetry. An undetected Man-in-the-Middle attack compromises downstream analytics, leading to catastrophic physical damage or failure to trigger emergency shutdowns.
+
+\paragraph{3. Exploitation Mechanics:}
+An adversary uses ARP poisoning or proxy interception to capture an authentic payload \texttt{\{"temperature": 23.5\}} and modifies the bytes in-flight to \texttt{\{"temperature": -99.9\}}, or replays an expired reading recorded 10 minutes prior:
+\begin{lstlisting}[language=bash]
+# Adversary modifies payload in transit while forwarding original headers
+curl -X POST http://ssle-ingestion.incus:5001/ingest \
+  -H "X-Sensor-Signature: <original_hmac_hex>" \
+  -H "X-Sensor-Timestamp: 1700000000" \
+  -d '{"device_id":"sensor-01","temperature":-99.9}'
+\end{lstlisting}
+
+\paragraph{4. Monitoring \& Mitigation Actions:}
+We implement a zero-trust cryptographic verification layer:
+\begin{itemize}
+    \item \textbf{Keyed-Hash Message Authentication (HMAC-SHA256):} Edge sensors compute an HMAC signature over the exact payload bytes and Unix epoch timestamp using a shared symmetric key $K$:
+    \begin{equation}
+        \sigma = \text{HMAC-SHA256}_K(\text{Payload} \mathbin{\Vert} \text{Timestamp})
+    \end{equation}
+    The sensor transmits $\sigma$ in header \texttt{X-Sensor-Signature} and timestamp $T_s$ in \texttt{X-Sensor-Timestamp}.
+    \item \textbf{Constant-Time Verification:} The gateway independently recomputes the HMAC and verifies equivalence using \texttt{hmac.Equal()} to prevent side-channel timing attacks. Any tampering results in an immediate \texttt{HTTP 401 Unauthorized}.
+    \item \textbf{Timestamp Replay Window Drift:} The gateway rejects readings where $|T_{\text{server}} - T_s| > \Delta_{\max} = 10\,\text{seconds}$, neutralizing replay attacks.
+\end{itemize}
+
+\paragraph{5. Action-Responses Adopted (Wazuh SIEM):}
+When cryptographic verification fails:
+\begin{itemize}
+    \item The gateway logs an \texttt{HTTP 401} event.
+    \item \textbf{Wazuh Rule 100104 (Level 11):} Matches \texttt{POST /ingest} with static field \texttt{<id>401</id>}, classifying the event under MITRE ATT\&CK T1557 (Man-in-the-Middle) and T1565 (Data Manipulation).
+    \item \textbf{Active Response:} Triggers immediate firewall isolation on the sender IP.
+\end{itemize}
+
+\paragraph{6. PoC Post-Mortem:}
+Automated unit and live integration tests confirmed that single-byte payload tampering was rejected with \texttt{HTTP 401}, and stale telemetry packets ($>10\,\text{s}$) were discarded, ensuring absolute data integrity.
+
+% ==============================================================================
+\subsection{Threat Comparison Summary}
+Table~\ref{tab:three_threats_summary} provides a comparative summary of the three implemented threat vectors, their detection mechanisms, and automated responses.
+
+\begin{table}[htbp]
+\centering
+\small
+\caption{Comparative Matrix of the Three Implemented Syllabus Threats.}
+\label{tab:three_threats_summary}
+\begin{tabularx}{\textwidth}{lXXll}
+\toprule
+\textbf{Threat Vector} & \textbf{Vulnerability Target} & \textbf{Detection Mechanism} & \textbf{SIEM Rule} & \textbf{Active Response} \\
+\midrule
+\textbf{1. Shellshock RCE} & Ingestion Header Parser & Regex Header Filter \& Apache Access Log & Rule 100100 / 100101 & \texttt{firewall-drop} (60s) \\
+\textbf{2. Botnet DDoS} & Ingestion Gateway Sockets & Token Bucket ($15\,\text{rps}$) \& PromQL Traffic Alert & Rule 100102 & \texttt{firewall-drop} (60s) \\
+\textbf{3. MitM Tampering} & In-Flight Telemetry Stream & HMAC-SHA256 \& Replay Window Drift ($10\,\text{s}$) & Rule 100104 & \texttt{firewall-drop} (60s) \\
+\bottomrule
+\end{tabularx}
+\end{table}
