@@ -1,6 +1,6 @@
 # System developed for SSLE Course
 
-This is the system developed for the first project of the SSLE course.
+This is the system developed for the first project of the SSLE course (Security in Large Scale Systems — *Segurança de Sistemas de Larga Escala*, University of Aveiro).
 
 ![](/009.gif)
 
@@ -8,279 +8,228 @@ This is the system developed for the first project of the SSLE course.
 ## Table of Contents
 
 - [Repository Structure](#repository-structure)
-- [Send code to the VM](#send-code-to-the-vm)
+- [Architecture & Overview](#architecture--overview)
+- [Getting Started](#getting-started)
+  - [Send Code to the VM](#send-code-to-the-vm)
+  - [Option 1: Standalone Showcase & Interactive Demo (`./run.sh`)](#option-1-standalone-showcase--interactive-demo-runsh)
+  - [Option 2: Complete Incus Container Infrastructure (`./deploy.sh`)](#option-2-complete-incus-container-infrastructure-deploysh)
+  - [Option 3: Automated CI Regression Suite (`./test_runner.sh`)](#option-3-automated-ci-regression-suite-test_runnersh)
+- [The Three Syllabus Threats & Countermeasures](#the-three-syllabus-threats--countermeasures)
+- [Autonomous FCAPS Event Correlation](#autonomous-fcaps-event-correlation)
+- [Quantitative Scalability & Bandwidth Optimization](#quantitative-scalability--bandwidth-optimization)
+- [Live Demonstration Runbook](#live-demonstration-runbook)
+- [Documentation & Final Report](#documentation--final-report)
 
 
 ## Repository Structure
 
-This repository has the following structure:
-
 - **[README.md](README.md)**: this document.
 
-- **[test_runner.sh](test_runner.sh)**: test runner. Runs the entire testing infrastructure and ensures that tests are passing. It exists with errors in case there is a failure in the pipeline.
+- **[DEMO_RUNBOOK.md](DEMO_RUNBOOK.md)**: step-by-step presentation runbook and checklist for the in-class live evaluation.
 
-## Send code to the VM:
+- **[deploy.sh](deploy.sh)**: master Incus orchestrator deploying all 7 microservices, Prometheus monitoring, and Wazuh SIEM into Linux containers.
+
+- **[cleanup.sh](cleanup.sh)**: master Incus teardown script that cleanly stops and removes all containers and shared host volumes.
+
+- **[run.sh](run.sh)**: standalone 9-stage showcase harness orchestrating the full system on localhost with health checks, threat demonstrations, FCAPS correlation, and scalability benchmarks.
+
+- **[test_runner.sh](test_runner.sh)**: automated isolated CI regression test runner. Runs all 8 validation stages across dedicated high-range ports.
+
+- **[build_binaries.sh](build_binaries.sh)**: build script compiling all static Go binaries into the `./bin/` directory.
+
+- **cmd**: Go source code for all system microservices, exporters, and attacker simulation tools.
+  - **[cmd/registry](cmd/registry)**: Service Registry with Hierarchical FQSN, locality-aware discovery, and rapid incident localization.
+  - **[cmd/ingestion](cmd/ingestion)**: IoT data ingestion gateway with rate limiting, input bounds checking, Shellshock header filtering, and HMAC-SHA256 signature verification.
+  - **[cmd/storage](cmd/storage)**: SQLite persistent storage service for telemetry data.
+  - **[cmd/analytics](cmd/analytics)**: analytics worker calculating aggregate temperature statistics.
+  - **[cmd/temperature](cmd/temperature)**: simulated IoT edge temperature sensor emitting HMAC-signed readings.
+  - **[cmd/attacker](cmd/attacker)**: multi-mode adversary simulator (DDoS flood, Shellshock CVE-2014-6271, rogue deregistration, data tampering).
+  - **[cmd/health_exporter](cmd/health_exporter)**: Prometheus exporter exposing service health states with physical and logical location labels.
+  - **[cmd/diagnostics_exporter](cmd/diagnostics_exporter)**: Prometheus exporter tracking requests per second and CPU usage.
+  - **[cmd/pushgateway_publisher](cmd/pushgateway_publisher)**: Prometheus Pushgateway publisher answering the Guide 3 challenge.
+
+- **internal**: internal Go modules shared across services.
+  - **[internal/models](internal/models)**: data models for telemetry payloads, service metadata, and hierarchical location (FQSN).
+  - **[internal/function](internal/function)**: locality-aware service discovery algorithms and routing logic.
+
+- **monitoring**: observability and SIEM configuration files.
+  - **[monitoring/prometheus.yml](monitoring/prometheus.yml)**: Prometheus scrape configuration and service endpoints.
+  - **[monitoring/prometheus_alerts.yml](monitoring/prometheus_alerts.yml)**: Prometheus alerting rules for latency thresholds, crashes, and resource limits.
+  - **[monitoring/deploy_monitoring.sh](monitoring/deploy_monitoring.sh)**: standalone Prometheus container deployment script.
+  - **[monitoring/wazuh](monitoring/wazuh)**: Wazuh SIEM configuration, including custom detection rules (`local_rules.xml`), decoders, and AlienVault IP reputation lists.
+
+- **scripts**: automated attack, benchmark, and fault management scripts.
+  - **[scripts/demonstrate_three_threats.sh](scripts/demonstrate_three_threats.sh)**: unified script demonstrating all three syllabus threats (Shellshock, DDoS, and MitM).
+  - **[scripts/fcaps_event_correlator.py](scripts/fcaps_event_correlator.py)**: autonomous 5-stage FCAPS event correlation engine for incident detection and root-cause analysis.
+  - **[scripts/run_ddos_benchmark.sh](scripts/run_ddos_benchmark.sh)**: automated DDoS benchmark script measuring p50/p95 latencies and throughput under attack.
+  - **[scripts/run_scalability_benchmark.sh](scripts/run_scalability_benchmark.sh)**: registry scale-up (up to 1,000 services) and WAN bandwidth optimization benchmark.
+  - **[scripts/set_target_limits.sh](scripts/set_target_limits.sh)**: helper to set Incus CPU and memory cgroups resource limits.
+  - **[scripts/deploy_ddos_clients.sh](scripts/deploy_ddos_clients.sh)**: script to deploy botnet client containers.
+  - **[scripts/deploy_mitm_topology.sh](scripts/deploy_mitm_topology.sh)**: script to set up dual-subnet route interception topology for MitM testing.
+  - **[scripts/generate_certs.sh](scripts/generate_certs.sh)**: certificate generation script for TLS and mTLS verification.
+
+- **docs**: technical documentation, threat modeling, and lab guide reports.
+  - **[docs/three_threats_evaluation.md](docs/three_threats_evaluation.md)**: comprehensive evaluation of the three chosen threats according to syllabus Slide 12 criteria.
+  - **[docs/attack_defense_tree.md](docs/attack_defense_tree.md)**: formal Attack-Defense Trees for the three syllabus threats.
+  - **[docs/fcaps_fault_management.md](docs/fcaps_fault_management.md)**: 5-stage FCAPS fault management specifications and correlation matrices.
+  - **[docs/scalability_evaluation.md](docs/scalability_evaluation.md)**: quantitative scalability models, Big-O analysis, and bandwidth savings proofs.
+  - **[docs/guide3_monitoring_and_defense.md](docs/guide3_monitoring_and_defense.md)**: Guide 3 Prometheus monitoring and defense countermeasures.
+  - **[docs/guide4_siem_wazuh.md](docs/guide4_siem_wazuh.md)**: Guide 4 Wazuh SIEM integration, log forwarding, and active response.
+  - **[docs/guide5_ddos_and_hardening.md](docs/guide5_ddos_and_hardening.md)**: Guide 5 DDoS simulation and target hardening.
+  - **[docs/guide5_mitm_and_cryptography.md](docs/guide5_mitm_and_cryptography.md)**: Guide 5 Route Hijacking and cryptographic integrity.
+
+- **report**: academic project report in LaTeX format.
+  - **[report/main.pdf](report/main.pdf)**: compiled final project evaluation report.
+  - **[report/main.tex](report/main.tex)**: root LaTeX source document.
+  - **[report/sections](report/sections)**: individual LaTeX sections (Introduction, State of the Art, Architecture, Risk Management, Threats, FCAPS, Evaluation, Conclusion).
+
+
+## Architecture & Overview
+
+The system implements a resilient, monitored Service-Oriented Architecture (SOA) IoT data ingestion pipeline written in Go. It supports deployment directly on localhost or across isolated Linux Containers (Incus), coupled with real-time Prometheus observability and Wazuh SIEM intrusion detection.
+
+```mermaid
+flowchart TD
+    subgraph Edge ["Edge Layer"]
+        TempSensor["Edge Temperature Sensor<br/><code>:5000</code><br/>(HMAC Signer)"]
+        Attacker["Adversary Tool<br/>(DDoS / Shellshock / MitM)"]
+    end
+
+    subgraph Gateway ["Gateway & Ingestion Layer"]
+        Ingestion["Ingestion Gateway<br/><code>:5001</code><br/>• Token-Bucket Rate Limiter<br/>• Shellshock Header Filter<br/>• HMAC-SHA256 Verifier<br/>• Apache Combined Logger"]
+    end
+
+    subgraph SOA ["Core SOA Microservices"]
+        Registry["Service Registry<br/><code>:5050</code><br/>• Hierarchical FQSN<br/>• Locality-Aware Discovery<br/>• Incident Localization"]
+        Storage["Storage Service<br/><code>:5002</code><br/>(SQLite Backend)"]
+        Analytics["Analytics Service<br/><code>:5003</code><br/>(Telemetry Aggregates)"]
+    end
+
+    subgraph Observability ["Observability & SIEM"]
+        HealthExp["Health Exporter<br/><code>:8000</code>"]
+        DiagExp["Diagnostics Exporter<br/><code>:8001</code>"]
+        Prometheus["Prometheus Server<br/><code>:9090</code><br/>(Alerting Rules)"]
+        WazuhMgr["Wazuh SIEM Manager<br/>(Active Response: firewall-drop)"]
+        WazuhAgent["Wazuh Agent<br/>(Log Forwarder)"]
+    end
+
+    TempSensor -->|"Signed Telemetry (POST /ingest)"| Ingestion
+    Attacker -.->|"Attack Payloads"| Ingestion
+    Ingestion -->|"Persist Reading"| Storage
+    Storage -->|"Telemetry Data"| Analytics
+    TempSensor -.->|"Register / Discover"| Registry
+    Ingestion -.->|"Register / Discover"| Registry
+    Storage -.->|"Register"| Registry
+    Analytics -.->|"Register"| Registry
+
+    Registry -->|"State & FQSN Labels"| HealthExp
+    Ingestion -->|"RPS & CPU Metrics"| DiagExp
+    HealthExp -->|"Scrape Metrics"| Prometheus
+    DiagExp -->|"Scrape Metrics"| Prometheus
+
+    Ingestion -->|"Write /var/log/ssle/access.log"| WazuhAgent
+    WazuhAgent -->|"Forward Logs"| WazuhMgr
+    WazuhMgr -->|"Trigger firewall-drop (IP Ban)"| Ingestion
+```
+
+
+## Getting Started
+
+### Send Code to the VM
+To synchronize this repository with the remote Kali VM:
 ```bash
 rsync -avz --delete ./ kali-vm:~/Desktop/ssle/
 ```
 
+Before running, compile static binaries into `./bin/`:
+```bash
+./build_binaries.sh
+```
 
-## Incus
+---
 
-Go into a container:
+### Option 1: Standalone Showcase & Interactive Demo (`./run.sh`)
+
+Ideal for quick development, automated validation, and live interactive queries on localhost:
+```bash
+# Run the complete 9-stage automated showcase and keep services running for inspection:
+./run.sh --keep-alive
+```
+* Options:
+  * `-k`, `--keep-alive`: keeps all 7 microservices running after the demo for manual `curl` inspection.
+  * `-a`, `--auto`: non-interactive execution for continuous integration pipelines.
+
+---
+
+### Option 2: Complete Incus Container Infrastructure (`./deploy.sh`)
+
+Deploy all 7 microservices, Prometheus monitoring, and Wazuh SIEM into isolated Incus system containers:
+```bash
+./deploy.sh
+```
+* Options:
+  * `./deploy.sh --skip-monitoring` (Omit Prometheus container).
+  * `./deploy.sh --skip-wazuh` (Omit Wazuh SIEM manager/agent).
+
+**Inspect running containers and IP addresses:**
+```bash
+incus list
+```
+
+**Access a container shell:**
 ```bash
 incus exec <container_name> -- sh
 # OR
 incus shell <container_name>
 ```
 
-To exit the container just write `exit`.
-
-Inspect a profile:
-```bash
-incus profile show <profile_name>
-```
-
-### Incus Deployment & Teardown
-
-Deploy the entire infrastructure (all 7 microservices, Prometheus monitoring, and Wazuh SIEM) with a single command:
-```bash
-./deploy.sh
-```
-*(Options: `./deploy.sh --skip-monitoring` to omit Prometheus, or `./deploy.sh --skip-wazuh` to omit Wazuh).*
-
-Inspect running containers and IP addresses:
-```bash
-incus list
-```
-
-Teardown and purge all containers and shared host volumes:
+**Clean teardown:**
+Stops and deletes all containers and purges the shared host storage:
 ```bash
 ./cleanup.sh
 ```
 
-*(Note: Legacy experimental K3s manifests and Docker build scripts have been archived in [`archive/k8s_legacy/`](archive/k8s_legacy/)).*
+---
 
+### Option 3: Automated CI Regression Suite (`./test_runner.sh`)
 
-
-
-## Guide 3: Attack-Defense & Monitoring (Prometheus)
-
-Comprehensive guide details, threat model mapping, and trade-off analysis can be found in [`docs/guide3_monitoring_and_defense.md`](docs/guide3_monitoring_and_defense.md).
-
-### 1. Build Binaries
+Runs the entire testing infrastructure across 8 sequential validation phases under strict isolation (temporary SQLite database and dedicated high-range ports `15050`, `15001-15003`, `18000-18001`):
 ```bash
-./build_binaries.sh
-```
-
-### 2. Deploy Prometheus Container (Incus)
-```bash
-./monitoring/deploy_monitoring.sh
-```
-Prometheus Web UI will be accessible at `http://<CONTAINER_IP>:9090` (check `incus list prometheus-container`).
-
-### 3. Run Exporters (Go Binaries)
-```bash
-# Service Health Exporter (port 8000)
-./bin/health_exporter &
-
-# Diagnostics Exporter (port 8001)
-./bin/diagnostics_exporter &
-
-# Optional: Pushgateway Publisher (Challenge)
-./bin/pushgateway_publisher &
-```
-
-### 4. Run Attacker
-```bash
-# Denial of Service (Flood)
-./bin/attacker -target http://localhost:5001 -mode flood -concurrency 5 -delay 10
-
-# Data Poisoning
-./bin/attacker -target http://localhost:5001 -mode poison -concurrency 2 -delay 500
-
-# Rogue Deregistration
-./bin/attacker -registry http://localhost:5050 -mode deregister -delay 1000
-```
-
-### 5. Defensive Remediations
-Run ingestion and registry with defensive controls enabled:
-```bash
-ENABLE_RATE_LIMIT=true \
-RATE_LIMIT_RPS=10 \
-ENABLE_INPUT_VALIDATION=true \
-MIN_TEMP=-50 \
-MAX_TEMP=100 \
-BLOCKED_DEVICES=attacker-bot-01 \
-ADMIN_TOKEN=ssle-secret-key \
-bash run.sh
-```
-
-
-## Automated Test Suite
-
-An extensive, fully automated test runner complying with non-disruptive isolation, reproducibility, fault tolerance, and human-readable reporting:
-
-```bash
-# Run the complete test suite
 ./test_runner.sh
 ```
-
-### Testing Infrastructure Architecture:
-1. **Non-Disruptive Isolation:**
-   - Dedicated high-range ports (`15050`, `15001-15003`, `15000`, `18000-18001`) preventing interference with any active dev instances on default ports (`5050`, `5001`, `8000`, etc.).
-   - Temporary SQLite database and isolated build output in `/tmp/ssle_test_XXXXXX`.
-2. **Reproducibility & Idempotency:**
-   - Pre-flight port cleanup.
-   - Automatic `trap cleanup EXIT INT TERM` guarantees teardown of background test processes and removal of test workspaces.
-3. **Fault Tolerance & CI Compliance:**
-   - Runs all 7 validation phases regardless of individual failures.
-   - Records errors in `FAILED_STEPS` array and exits with code `0` on success, or `1` on failure for CI/CD pipelines.
-4. **Human-Readable Output:**
-   - Color-coded prefixes: `[INFO]`, `[SUCCESS]`, `[WARNING]`, `[ERROR]`.
+* Ensures zero disruption to any existing services running on default ports.
+* Automatically traps termination signals (`EXIT`, `INT`, `TERM`) for clean teardown.
 
 
-## Guide 4: SIEM Integration (Wazuh), Threat Detection & Active Response
+## The Three Syllabus Threats & Countermeasures
 
-Comprehensive documentation, rule analysis, and FCAPS mapping are available in [`docs/guide4_siem_wazuh.md`](docs/guide4_siem_wazuh.md).
+The project implements and defends against the three formal threats chosen according to syllabus Slide 12 criteria:
 
-### 1. Deploy Wazuh SIEM Manager (Incus)
-```bash
-./monitoring/wazuh/deploy_wazuh.sh
-```
-
-Wazuh credentials inside `wazuh-container`:
-```
-User: admin
-Password: AFH*ngfeY91F2EO1vlA2Exf0*iVk.V6?
-```
-
-### 2. Deploy Wazuh Agent to Ingestion Service
-```bash
-# Retrieve Wazuh Manager IP
-WAZUH_IP=$(incus list wazuh-container --format csv -c 4 | awk '{print $1}')
-
-# Install and configure agent on ssle-ingestion
-./monitoring/wazuh/install_agent.sh "$WAZUH_IP" ssle-ingestion
-```
-
-### 3. Simulate Attacks (Guide 4)
-```bash
-# Shellshock Command Injection (CVE-2014-6271 - Rule 100100)
-./bin/attacker -target http://localhost:5001 -mode shellshock -concurrency 1 -duration 5
-
-# AlienVault Blacklisted IP Traffic (Rule 100101)
-./bin/attacker -target http://localhost:5001 -mode malicious_ip -concurrency 1 -duration 5
-```
-
-### 4. Verify Active Response (Firewall Drop)
-```bash
-# Inspect automated firewall-drop triggers inside ssle-ingestion
-incus exec ssle-ingestion -- cat /var/ossec/logs/active-responses.log
-
-# Inspect active iptables DROP rules
-incus exec ssle-ingestion -- iptables -L -n -v
-```
-
-
-## Guide 5: Distributed Denial of Service (DDoS) & Target Hardening
-
-Comprehensive analysis, hardening strategies, and experimental worksheets are documented in [`docs/guide5_ddos_and_hardening.md`](docs/guide5_ddos_and_hardening.md).
-
-### 1. Apply Incus Resource Quotas (CPU & Memory Hardening)
-```bash
-# Constrain target ingestion container to 1 CPU core and 256MB RAM
-./scripts/set_target_limits.sh apply ssle-ingestion 1 256MiB
-
-# Query current resource usage and limits
-./scripts/set_target_limits.sh show ssle-ingestion
-```
-
-### 2. Deploy Botnet Client Containers (`load-client-a` & `load-client-b`)
-```bash
-./scripts/deploy_ddos_clients.sh
-```
-
-### 3. Run Automated DDoS Benchmark & Worksheet Generator
-```bash
-# Runs Baseline (1 client, c=1) vs Distributed Attack (2 clients, c=2)
-./scripts/run_ddos_benchmark.sh http://ssle-ingestion.incus:5001 40 2
-```
-
-### 4. Teardown Botnet Clients
-```bash
-./scripts/cleanup_ddos_clients.sh
-```
-
-
-## Guide 5: Route & Signals Hijacking / Man-in-the-Middle (MitM) Prevention
-
-Comprehensive analysis, network topology, and cryptographic verification details are documented in [`docs/guide5_mitm_and_cryptography.md`](docs/guide5_mitm_and_cryptography.md).
-
-### 1. Generate TLS & mTLS Certificates
-```bash
-# Generates Root CA, Ingestion Server certs (with SANs), mTLS client certs, and rogue MitM CA
-./scripts/generate_certs.sh
-```
-
-### 2. Deploy Dual-Subnet Interception Topology (Incus)
-```bash
-# Creates ssle-net-client (10.20.1.0/24), ssle-net-server (10.20.2.0/24) and ssle-interceptor router
-./scripts/deploy_mitm_topology.sh
-```
-
-### 3. Start Ingestion with HMAC Verification Enabled
-```bash
-ENABLE_HMAC_VERIFICATION=true \
-HMAC_SECRET_KEY="your-shared-secret-key-32bytes-long" \
-MAX_TIMESTAMP_DRIFT_SECS=10 \
-./bin/ingestion
-```
-
-### 4. Simulate MitM In-Flight Tampering & Attacks
-```bash
-# Attacker modifies sensor telemetry payloads in transit (Ingestion responds HTTP 401)
-./bin/attacker -target http://localhost:5001 -mode tamper -concurrency 1 -duration 5
-```
-
-### 5. Teardown Interception Topology
-```bash
-./scripts/cleanup_mitm_topology.sh
-```
-
-
-## Three Threats Selection & Evaluation (Course Syllabus)
-
-Comprehensive analysis following Slide 12 criteria (threat description, relevance, exploit vector, monitoring actions, mitigations, active responses, and practical PoC post-mortem) is documented in [`docs/three_threats_evaluation.md`](docs/three_threats_evaluation.md), with formal attack modeling in [`docs/attack_defense_tree.md`](docs/attack_defense_tree.md).
+| Threat | Syllabus Area | Primary Detection | Primary Defense | SIEM Rule & Active Response |
+| :--- | :--- | :--- | :--- | :--- |
+| **1. Shellshock (CVE-2014-6271)** | Reputation Systems & Exploitation | Access Log Pattern Regex | Application Filter (`403 Forbidden`) | Rule 100100 $\rightarrow$ `firewall-drop` (60s IP Ban) |
+| **2. DDoS / Botnet Flood** | Massive DoS Disruptions & Botnets | Prometheus `p95` Latency & RPS | Token Bucket (`429`) & Incus cgroups | Rule 100102 $\rightarrow$ `firewall-drop` (60s IP Ban) |
+| **3. Route Hijacking & Tampering** | Route & Signals Hijacking | Ingestion Signature & Timestamp Drift | HMAC-SHA256 (`401`) & TLS/mTLS | Rule 100104 $\rightarrow$ `firewall-drop` (60s IP Ban) |
 
 ### Run the Unified Three Threats Demonstrator
-Demonstrates and validates all three threats (Shellshock, DDoS, and MitM) in sequence against live or containerized endpoints:
+Demonstrates and validates all three threats in sequence against live or containerized endpoints:
 ```bash
 ./scripts/demonstrate_three_threats.sh http://localhost:5001 http://localhost:5050
 ```
 
-### Three Threats Summary Matrix:
-| Threat | Syllabus Area | Primary Detection | Primary Defense | SIEM Rule & Active Response |
-| :--- | :--- | :--- | :--- | :--- |
-| **1. Shellshock / Reputation** | Reputation Systems & Exploitation | Access Log Pattern Regex | Header Drop (`403 Forbidden`) | Rule 100100 & 100101 $\rightarrow$ `firewall-drop` (60s) |
-| **2. DDoS / Botnet** | Massive DoS Disruptions & Botnets | Prometheus `p95` Latency & Req/s | Token Bucket (`429`) & Incus cgroups | Rule 100102 $\rightarrow$ `firewall-drop` (60s) |
-| **3. Route & Signals Hijacking** | Route and Signals Hijacking | Ingestion Signature / Replay Check | HMAC-SHA256 (`401`) & TLS/mTLS | Rule 100104 $\rightarrow$ `firewall-drop` (60s) |
 
+## Autonomous FCAPS Event Correlation
 
-## Fault Management Workflow (FCAPS) & Event Correlation
+The system implements the 5-stage Fault Management cycle bridging operational metrics with security logs:
+1. **Detecting:** Prometheus scrapers monitor response latency and error rates defined in [`monitoring/prometheus_alerts.yml`](monitoring/prometheus_alerts.yml).
+2. **Diagnosing & Isolating:** Registry rapid incident localization (`GET /services/locate/{id}`) instantly maps alerts to physical host (`kali-vm`) and container (`incus:ssle-ingestion`).
+3. **Correlating:** Bridges metrics with Wazuh rules and Apache access logs for root-cause analysis.
+4. **Resolution / Mitigation:** Automated Active Response (`firewall-drop` IP ban) or container restart.
+5. **Post-Mortem:** Validates baseline recovery and outputs structured JSON incident logs.
 
-Comprehensive architecture, state diagrams, correlation matrices, and incident post-mortems are documented in [`docs/fcaps_fault_management.md`](docs/fcaps_fault_management.md).
-
-### The 5-Stage FCAPS Cycle
-1. **Detecting:** Prometheus scrapers monitor `service_health`, `service_response_time_seconds`, `service_requests_per_second`, and `service_cpu_percent` with alerting thresholds defined in [`monitoring/prometheus_alerts.yml`](monitoring/prometheus_alerts.yml).
-2. **Diagnosing & Isolating:** Service Registry rapid incident localization (`GET /services/locate/{id}`) maps anomalies to canonical FQSN, physical machine (`kali-vm`), container (`incus:ssle-ingestion`), and administrative domain (`pt-aveiro/lab-ssle`).
-3. **Correlating:** Bridges the gap between operational metrics and security logs, performing root cause analysis across Wazuh rules (100100/101, 100102, 100104) and Apache Combined access logs.
-4. **Resolution / Mitigation:** Automated Wazuh Active Response (`firewall-drop` 60s IP ban), application-level rate limiting (`HTTP 429`), or container restart (`incus restart`).
-5. **Post-Mortem:** Validates baseline recovery (`/health` UP, latency < 20ms) and outputs a structured incident report.
-
-### Run the Autonomous FCAPS Correlator
+**Run the autonomous correlator:**
 ```bash
-./scripts/fcaps_event_correlator.py \
+python3 ./scripts/fcaps_event_correlator.py \
   --registry http://localhost:5050 \
   --health-exp http://localhost:8000 \
   --diag-exp http://localhost:8001 \
@@ -289,28 +238,38 @@ Comprehensive architecture, state diagrams, correlation matrices, and incident p
 ```
 
 
-## Quantitative Scalability Evaluation & Bandwidth Optimization
+## Quantitative Scalability & Bandwidth Optimization
 
-Comprehensive mathematical modeling, Big-$O$ complexity analysis, empirical scale-up benchmarks, and SQLite saturation limits are documented in [`docs/scalability_evaluation.md`](docs/scalability_evaluation.md).
+* **Registry Scaling:** $\mathcal{O}(1)$ direct key lookups remain sub-millisecond ($p50 \approx 0.46\text{ ms}$) across 500+ services with $< 1.2\text{ MB}$ memory footprint.
+* **Locality-Aware Bandwidth Optimization:** `DiscoverLocally()` routes queries to intra-zone endpoints first, delivering **99.99% WAN bandwidth savings** ($18.51\text{ Mbps} \rightarrow 0.0002\text{ Mbps}$).
 
-### Run the Scalability Benchmark Suite
-Evaluates Registry scaling from $10 \rightarrow 1,000$ services, bandwidth reduction modeling, and SQLite concurrency limits:
+**Run the scalability benchmark suite:**
 ```bash
 ./scripts/run_scalability_benchmark.sh http://localhost:5050 http://localhost:5001
 ```
 
-### Key Scalability Findings:
-* **Registry Scaling:** $\mathcal{O}(1)$ direct key lookups remain sub-millisecond ($p50 \approx 0.58\text{ ms}$) up to 1,000 registered services with $< 1.2\text{ MB}$ memory footprint.
-* **Bandwidth Optimization (Slide 7 Bonus):** `DiscoverLocally()` confines 99.99% of sensor discovery and telemetry traffic to local LAN/Incus subnets, reducing inter-region WAN bandwidth from $18.51\text{ Mbps}$ to $0.0002\text{ Mbps}$.
-* **Bottleneck Identified:** Ingestion gateways scale horizontally ($> 1,500\text{ req/s}$ per core), but single-node SQLite write serialization plateaus at $\approx 425\text{ req/s}$, establishing the academic motivation for Project 2's Byzantine Fault Tolerant distributed state replication.
 
+## Live Demonstration Runbook
 
-## In-Class Live Evaluation Runbook (`DEMO_RUNBOOK.md`)
-
-For the live grading demo with the professor, refer to [`DEMO_RUNBOOK.md`](DEMO_RUNBOOK.md) for an ordered step-by-step presentation runbook containing:
-- Cluster startup commands (Incus & Standalone mode).
-- Commands to trigger and verify each of the **Three Syllabus Threats** (Shellshock, DDoS, MitM).
+For the in-class live demonstration with the professor, refer to [`DEMO_RUNBOOK.md`](DEMO_RUNBOOK.md) for an ordered presentation runbook detailing:
+- Cluster startup commands (Incus containers & Standalone mode).
+- Triggering and verifying each of the **Three Syllabus Threats** (Shellshock, DDoS, MitM).
 - Wazuh Active Response (`firewall-drop`) and `iptables` rule inspection.
 - The 5-stage **FCAPS Event Correlation** execution.
 - Quantitative **Scalability & Bandwidth Optimization** benchmarks.
 - Clean teardown procedures.
+
+
+## Documentation & Final Report
+
+- **Academic Evaluation Report (PDF):** [`report/main.pdf`](report/main.pdf)
+- **LaTeX Source Code:** [`report/main.tex`](report/main.tex) and [`report/sections/`](report/sections/)
+- **Threat Modeling & Attack Trees:** [`docs/attack_defense_tree.md`](docs/attack_defense_tree.md)
+- **Three Threats Syllabus Analysis:** [`docs/three_threats_evaluation.md`](docs/three_threats_evaluation.md)
+- **FCAPS Fault Management Specifications:** [`docs/fcaps_fault_management.md`](docs/fcaps_fault_management.md)
+- **Scalability & Optimization Analysis:** [`docs/scalability_evaluation.md`](docs/scalability_evaluation.md)
+- **Practical Lab Guides Reference:**
+  - [`docs/guide3_monitoring_and_defense.md`](docs/guide3_monitoring_and_defense.md) (Prometheus Observability)
+  - [`docs/guide4_siem_wazuh.md`](docs/guide4_siem_wazuh.md) (Wazuh SIEM & Active Response)
+  - [`docs/guide5_ddos_and_hardening.md`](docs/guide5_ddos_and_hardening.md) (DDoS & Target Hardening)
+  - [`docs/guide5_mitm_and_cryptography.md`](docs/guide5_mitm_and_cryptography.md) (Route Hijacking & Cryptographic Integrity)

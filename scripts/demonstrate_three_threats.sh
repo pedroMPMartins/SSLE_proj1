@@ -52,7 +52,7 @@ if curl -s -f -m 2 "$TARGET_URL/health" >/dev/null 2>&1; then
     echo -e "${GREEN}UP${NC}"
 else
     echo -e "${YELLOW}Target unreachable on $TARGET_URL.${NC}"
-    echo "    To run against live services, start them via ./run.sh or ./deploy_incus.sh."
+    echo "    To run against live services, start them via ./run.sh or ./deploy.sh."
     echo "    To run isolated end-to-end regression tests, use ./test_runner.sh."
     exit 1
 fi

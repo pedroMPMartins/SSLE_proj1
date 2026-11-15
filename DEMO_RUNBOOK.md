@@ -37,14 +37,11 @@ During the live evaluation with the professor, you can follow this ordered prese
 # 1. Compile static Go binaries into ./bin/
 ./build_binaries.sh
 
-# 2. Deploy full SOA pipeline into isolated Incus containers
-./deploy_incus.sh
-
-# 3. Deploy Prometheus Monitoring container
-./monitoring/deploy_monitoring.sh
-
-# 4. Deploy Wazuh SIEM Manager container
-./monitoring/wazuh/deploy_wazuh.sh
+# 2. Deploy full SOA pipeline, Prometheus monitoring, and Wazuh SIEM into Incus containers
+./deploy.sh
+# Optional flags:
+#   ./deploy.sh --skip-monitoring   # Omit Prometheus container
+#   ./deploy.sh --skip-wazuh        # Omit Wazuh SIEM manager/agent
 ```
 
 **How to verify the cluster is running:**
@@ -52,26 +49,17 @@ During the live evaluation with the professor, you can follow this ordered prese
 incus list
 ```
 *Expected Output:*
-You should see `ssle-registry`, `ssle-ingestion`, `ssle-storage`, `ssle-analytics`, `ssle-temperature`, `prometheus-container`, and `wazuh-container` with assigned IPv4 addresses and status `RUNNING`.
+You should see `ssle-registry`, `ssle-storage`, `ssle-ingestion`, `ssle-analytics`, `ssle-temperature`, `ssle-exporter`, `prometheus-container`, and `wazuh-container` with assigned IPv4 addresses and status `RUNNING`.
 
 ---
 
 ### Option B: Quick Standalone Localhost Mode (For Rapid Demonstration)
 If running directly on the Kali VM or development host:
 ```bash
-# 1. Compile static binaries
-./build_binaries.sh
-
-# 2. Launch all microservices in the background with defensive controls active
-ENABLE_RATE_LIMIT=true \
-RATE_LIMIT_RPS=10 \
-ENABLE_INPUT_VALIDATION=true \
-ENABLE_SHELLSHOCK_DEFENSE=true \
-ENABLE_HMAC_VERIFICATION=true \
-HMAC_SECRET_KEY="ssle-demo-shared-secret-key-32b" \
-ADMIN_TOKEN="ssle-admin-secret-token" \
-bash run.sh &
+# Run the complete 9-stage interactive showcase and keep services running for inspection:
+./run.sh --keep-alive
 ```
+*(Note: `./run.sh` automatically compiles missing binaries, configures all security controls—rate limiting, HMAC signing, Shellshock filtering, admin tokens—runs through health and threat verifications, and stays listening on ports `5050`, `5001`, `5002`, `5003`, `5000`, `8000`, and `8001`).*
 
 **How to verify health across all microservices:**
 ```bash
@@ -336,14 +324,15 @@ All 8 verification steps pass cleanly with exit code `0`:
 
 To cleanly destroy all background processes and containers after the demo:
 ```bash
-# If running standalone background services:
+# If running standalone background services (e.g. from ./run.sh --keep-alive):
+# Simply press Ctrl+C in the terminal, or run:
 killall -9 ingestion registry storage analytics temperature health_exporter diagnostics_exporter 2>/dev/null || true
 
 # If running Incus containers:
-./cleanup_incus.sh
-./monitoring/cleanup_monitoring.sh
-./monitoring/wazuh/cleanup_wazuh.sh
-./scripts/cleanup_ddos_clients.sh
-./scripts/cleanup_mitm_topology.sh
+./cleanup.sh
+
+# Optional: Cleanup additional benchmark / adversary network topologies if deployed
+./scripts/cleanup_ddos_clients.sh 2>/dev/null || true
+./scripts/cleanup_mitm_topology.sh 2>/dev/null || true
 ```
 EOF
