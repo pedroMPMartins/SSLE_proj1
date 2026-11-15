@@ -33,9 +33,13 @@ echo "==> Detected host bridge IP: $HOST_BRIDGE_IP"
 # 4. Generate container prometheus.yml with dynamic target IP
 sed "s/10.0.2.2/$HOST_BRIDGE_IP/g" monitoring/prometheus.yml > /tmp/prometheus_container.yml
 
-echo "==> Pushing prometheus.yml to container..."
+echo "==> Pushing prometheus.yml and alerting rules to container..."
 incus file push /tmp/prometheus_container.yml "$CONTAINER_NAME/etc/prometheus/prometheus.yml"
 rm -f /tmp/prometheus_container.yml
+
+if [ -f "monitoring/prometheus_alerts.yml" ]; then
+    incus file push monitoring/prometheus_alerts.yml "$CONTAINER_NAME/etc/prometheus/prometheus_alerts.yml"
+fi
 
 # 5. Restart Prometheus to apply new configuration
 echo "==> Restarting prometheus service inside $CONTAINER_NAME..."

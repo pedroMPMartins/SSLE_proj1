@@ -25,19 +25,20 @@ incus profile show <profile_name>
 
 ### Incus Deployment & Teardown
 
-Deploy the full microservice pipeline into isolated Incus containers:
+Deploy the entire infrastructure (all 7 microservices, Prometheus monitoring, and Wazuh SIEM) with a single command:
 ```bash
-./deploy_incus.sh
+./deploy.sh
 ```
+*(Options: `./deploy.sh --skip-monitoring` to omit Prometheus, or `./deploy.sh --skip-wazuh` to omit Wazuh).*
 
 Inspect running containers and IP addresses:
 ```bash
 incus list
 ```
 
-Teardown and purge containers and shared volumes:
+Teardown and purge all containers and shared host volumes:
 ```bash
-./cleanup_incus.sh
+./cleanup.sh
 ```
 
 *(Note: Legacy experimental K3s manifests and Docker build scripts have been archived in [`archive/k8s_legacy/`](archive/k8s_legacy/)).*

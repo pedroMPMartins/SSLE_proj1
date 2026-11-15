@@ -28,7 +28,7 @@ scrape_configs:
     metrics_path: '/metrics'
     scrape_interval: 5s
     static_configs:
-      - targets: ['127.0.0.1:8001', '10.0.2.2:8001']
+      - targets: ['127.0.0.1:8001', '10.0.2.2:8001', 'ssle-exporter.incus:8001']
         labels:
           environment: 'ssle-lab'
           tier: 'soa-diagnostics'
