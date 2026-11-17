@@ -1,7 +1,7 @@
 \section{Approach to Three Syllabus Threats}
 \label{sec:three_threats}
 
-As mandated by the course guidelines (Slides 6, 10, and 12), this section provides a detailed analysis of three threats selected from the syllabus: (1) Web Exploitation and Command Injection; (2) Massive Denial-of-Service (DDoS) Disruptions and Botnets; and (3) Route and Signals Hijacking / Man-in-the-Middle (MitM). For each threat, we follow the structured evaluation framework: description, system relevance, exploitation mechanics, monitoring/metrics, active responses, and proof-of-concept post-mortem.
+As mandated by the course guidelines (Slides 6, 10, and 12), this section provides a detailed analysis of three threats selected from the syllabus: (1) Web Exploitation and Command Injection, (2) Massive Denial-of-Service (DDoS) Disruptions and Botnets, and (3) Route and Signals Hijacking / Man-in-the-Middle (MitM). For each threat, we follow the structured evaluation framework: description, system relevance, exploitation mechanics, monitoring/metrics, active responses, and proof-of-concept post-mortem.
 
 % ==============================================================================
 \subsection{Threat 1: Web Exploitation \& Command Injection (Shellshock CVE-2014-6271)}
@@ -38,7 +38,7 @@ Wazuh Manager inspects the access log using custom detection rules:
 \end{itemize}
 
 \paragraph{6. PoC Post-Mortem:}
-Execution during live demonstration confirmed: (1) the adversary probe was instantly blocked with \texttt{HTTP 403}; (2) Wazuh generated alert 100100; and (3) subsequent connection attempts from the attacker IP were dropped at the packet filtering layer.
+Execution during live demonstration confirmed: (1) the adversary probe was instantly blocked with \texttt{HTTP 403}, (2) Wazuh generated alert 100100, and (3) subsequent connection attempts from the attacker IP were dropped at the packet filtering layer.
 
 % ==============================================================================
 \subsection{Threat 2: Massive Denial-of-Service (DDoS) Disruptions \& Botnets}

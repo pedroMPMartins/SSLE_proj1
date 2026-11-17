@@ -1,8 +1,8 @@
 I am currently reviewing the report for errors and problems that may appear.
 
 Current notes:
-- need to remove all em-dashes from the report.
-- need to remove the use of semi-colons (;) from the middle of the text.
+- [x] need to remove all em-dashes from the report.
+- [x] need to remove the use of semi-colons (;) from the middle of the text.
 - section 1.1 (key contributions) do not make sense. I built the system from the ground, so what the fuck is even that.
 - ensure that links such as references show up as black and not green.
 - when mentioning other sections, currently the link is only in the number and the number is blue. I would prefer if the link was in both the number and the "Section" word and for it to be black. For example, clicking on "Section 2" would take to section 2, no need to only click on the number "2". This should be the same for Tables and Figures.

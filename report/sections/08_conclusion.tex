@@ -26,7 +26,7 @@ As highlighted in the course guidelines (Slide 13), evaluating why a solution is
 \end{itemize}
 
 \subsection{Future Work: Architectural Bridge to Project 2}
-These identified limitations directly establish the roadmap for **Project 2: Attack Tolerance Mechanisms (Due December 23 -- Slides 2 \& 13)**:
+These identified limitations directly establish the roadmap for **Project 2: Attack Tolerance Mechanisms (Due December 23, Slides 2 \& 13)**:
 \begin{enumerate}
     \item \textbf{Byzantine Fault Tolerant (BFT) State Machine Replication:} Replace the single-node SQLite storage service with a distributed quorum-based state machine replication protocol (e.g., PBFT~\citep{castro2002practical} or Raft). This will eliminate the single point of failure and write lock saturation, allowing the telemetry cluster to maintain continuous availability and data consistency even when a subset of nodes are compromised by arbitrary Byzantine adversaries.
     \item \textbf{Decentralized Registry Clustering:} Implement peer-to-peer gossip protocols or distributed hash tables (DHT) across regional registries to ensure zero-downtime service discovery under network partitions.
