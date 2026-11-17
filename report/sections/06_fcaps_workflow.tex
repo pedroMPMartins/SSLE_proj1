@@ -12,7 +12,7 @@ In operational environments, telemetry probes and health checks observe \textit{
 
 Conversely, SIEM logs capture \textit{malicious intent} (e.g., an unauthorized IP injecting shell strings or modifying HMAC signatures) but have no visibility into how severely the target service is degrading. 
 
-Our architecture bridges this gap: we implement a multi-layered correlation engine that uses operational symptoms from Prometheus as the initial trigger, then correlates with Wazuh SIEM security logs to establish causality.
+The developed architecture bridges this gap: I implement a multi-layered correlation engine that uses operational symptoms from Prometheus as the initial trigger, then correlates with Wazuh SIEM security logs to establish causality.
 
 \subsection{The 5-Stage FCAPS Operational Lifecycle}
 \cref{fig:fcaps} illustrates the 5-stage closed-loop fault management architecture implemented in \texttt{scripts/fcaps\_event\_correlator.py}.

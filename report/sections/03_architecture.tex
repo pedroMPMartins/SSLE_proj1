@@ -1,7 +1,7 @@
 \section{Service Architecture Used}
 \label{sec:architecture}
 
-To satisfy the scalability, observability, and threat-resilience mandates of Project 1, we implemented a modular, 7-tier Service-Oriented Architecture deployed across isolated Linux Containers (Incus). The complete architectural topology and data flow are illustrated in \cref{fig:architecture}.
+To satisfy the scalability, observability, and threat-resilience mandates of Project 1, I implemented a modular, 7-tier Service-Oriented Architecture deployed across isolated Linux Containers (Incus). The complete architectural topology and data flow are illustrated in \cref{fig:architecture}.
 
 \begin{figure}[htbp]
 \centering
@@ -68,11 +68,11 @@ The architecture decomposes application concerns into distinct microservices:
 \subsection{Hierarchical Identification and Fully Qualified Service Names (FQSN)}
 A core requirement of Project 1 (Slides 4 \& 7) is the identification and registration of elements in a scalable, location-aware structure that encodes physical hardware, logical container virtualization, and geographic delegation of responsibility.
 
-To eliminate namespace collisions and enable instant incident localization, we formulated the \textbf{Fully Qualified Service Name (FQSN)} schema:
+To eliminate namespace collisions and enable instant incident localization, I formulated the \textbf{Fully Qualified Service Name (FQSN)} schema:
 \begin{equation}
     \text{FQSN} = \langle\text{region}\rangle.\langle\text{zone}\rangle.\langle\text{physical\_host}\rangle.\langle\text{logical\_env}\rangle.\langle\text{instance\_id}\rangle.\langle\text{kind}\rangle
 \end{equation}
-A concrete instantiation of this naming standard in our testbed is:
+A concrete instantiation of this naming standard in the testbed is:
 \begin{lstlisting}[language=bash]
 pt-aveiro.lab-ssle.kali-vm.incus:ssle-ingestion.a1b2c3d4.ingestion
 \end{lstlisting}

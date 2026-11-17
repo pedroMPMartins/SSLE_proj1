@@ -1,7 +1,7 @@
 \section{Approach to Three Syllabus Threats}
 \label{sec:three_threats}
 
-As mandated by the course guidelines (Slides 6, 10, and 12), this section provides a detailed analysis of three threats selected from the syllabus: (1) Web Exploitation and Command Injection, (2) Massive Denial-of-Service (DDoS) Disruptions and Botnets, and (3) Route and Signals Hijacking / Man-in-the-Middle (MitM). For each threat, we follow the structured evaluation framework: description, system relevance, exploitation mechanics, monitoring/metrics, active responses, and proof-of-concept post-mortem.
+As mandated by the course guidelines (Slides 6, 10, and 12), this section provides a detailed analysis of three threats selected from the syllabus: (1) Web Exploitation and Command Injection, (2) Massive Denial-of-Service (DDoS) Disruptions and Botnets, and (3) Route and Signals Hijacking / Man-in-the-Middle (MitM). For each threat, I follow the structured evaluation framework: description, system relevance, exploitation mechanics, monitoring/metrics, active responses, and proof-of-concept post-mortem.
 
 % ==============================================================================
 \subsection{Threat 1: Web Exploitation \& Command Injection (Shellshock CVE-2014-6271)}
@@ -23,7 +23,7 @@ curl -X POST http://ssle-ingestion.incus:5001/ingest \
 \end{lstlisting}
 
 \paragraph{4. Monitoring \& Mitigation Actions:}
-We implement a two-tier defense:
+I implement a two-tier defense:
 \begin{itemize}
     \item \textbf{Gateway Header Filtering:} Ingestion middleware scans all inbound headers against the regular expression \texttt{\textbackslash(\textbackslash)\textbackslash s*\{\textbackslash s*:;\textbackslash s*\};}. Any matching request is immediately aborted with \texttt{HTTP 403 Forbidden} before reaching application logic.
     \item \textbf{Structured SIEM Logging:} The gateway records an Apache Combined access log entry containing the exact attacker IP, timestamp, method, URI, HTTP 403 status, and the raw \texttt{User-Agent} string.
@@ -51,13 +51,13 @@ Volumetric Denial-of-Service attacks occur when coordinated botnets overwhelm in
 Edge sensors operate with constrained transmission buffers. If the ingestion gateway drops packets or hangs on socket read buffers due to volumetric resource starvation, critical industrial temperature excursions or environmental anomalies remain undetected.
 
 \paragraph{3. Exploitation Mechanics:}
-We developed a multi-threaded stress harness (\texttt{cmd/attacker}) capable of firing concurrent bursts ($>200\,\text{req/s}$) or multi-megabyte payloads ($>2\,\text{MB}$) to saturate the gateway thread pool:
+I developed a multi-threaded stress harness (\texttt{cmd/attacker}) capable of firing concurrent bursts ($>200\,\text{req/s}$) or multi-megabyte payloads ($>2\,\text{MB}$) to saturate the gateway thread pool:
 \begin{lstlisting}[language=bash]
 ./bin/attacker -target http://ssle-ingestion.incus:5001 -mode flood -concurrency 25 -delay 5
 \end{lstlisting}
 
 \paragraph{4. Monitoring \& Mitigation Actions:}
-We engineered multi-layered target hardening inside the Go Ingestion Gateway:
+I engineered multi-layered target hardening inside the Go Ingestion Gateway:
 \begin{itemize}
     \item \textbf{Token-Bucket Rate Limiter:} Implements an in-memory token-bucket algorithm per client IP allowing a sustained rate of $r = 15.0\,\text{req/s}$ with a maximum burst capacity of $b = 15$ tokens. When tokens are exhausted, excess requests are rejected with \texttt{HTTP 429 Too Many Requests}.
     \item \textbf{Payload Clamping:} Wrapping request body readers with \texttt{http.MaxBytesReader(w, r.Body, 1048576)} enforces a hard $1\,\text{MB}$ boundary, rejecting bloated payloads with \texttt{HTTP 400 Bad Request}.
@@ -95,7 +95,7 @@ curl -X POST http://ssle-ingestion.incus:5001/ingest \
 \end{lstlisting}
 
 \paragraph{4. Monitoring \& Mitigation Actions:}
-We implement a zero-trust cryptographic verification layer:
+I implement a zero-trust cryptographic verification layer:
 \begin{itemize}
     \item \textbf{Keyed-Hash Message Authentication (HMAC-SHA256):} Edge sensors compute an HMAC signature over the exact payload bytes and Unix epoch timestamp using a shared symmetric key $K$:
     \begin{equation}

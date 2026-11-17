@@ -1,10 +1,10 @@
 \section{Quantitative Scalability Evaluation}
 \label{sec:evaluation}
 
-The course guidelines (Slides 4, 7, and 12) require an explicit, quantitative evaluation of the solution's scalability, bottleneck identification, and mathematical proof of bandwidth optimization. This section presents empirical benchmark results obtained from our automated evaluation harness (\texttt{scripts/run\_scalability\_benchmark.sh} and Go micro-benchmarks).
+The course guidelines (Slides 4, 7, and 12) require an explicit, quantitative evaluation of the solution's scalability, bottleneck identification, and mathematical proof of bandwidth optimization. This section presents empirical benchmark results obtained from the automated evaluation harness (\texttt{scripts/run\_scalability\_benchmark.sh} and Go micro-benchmarks).
 
 \subsection{Service Registry Complexity \& Scalability}
-We evaluate the Service Registry under horizontal scaling from $N = 10$ to $N = 1000$ services.
+I evaluate the Service Registry under horizontal scaling from $N = 10$ to $N = 1000$ services.
 
 \subsubsection{Theoretical Computational Complexity}
 The registry maintains an in-memory hash table (\texttt{map[string]Service}) guarded by a sync Read/Write Mutex (\texttt{sync.RWMutex}).
@@ -98,7 +98,7 @@ In a flat, unpartitioned architecture without locality awareness, edge sensors o
 Every telemetry packet crosses high-cost WAN transit links.
 
 \paragraph{Model B: Locality-Aware Discovery (\texttt{DiscoverLocally}).}
-Under our hierarchical FQSN model, clients invoke \texttt{DiscoverLocally(region, zone, kind)}. Telemetry data is routed exclusively to local ingestion gateways located within the same local area network (LAN/Incus bridge). Cross-region WAN links are utilized solely for periodic, aggregated statistical summaries (e.g., sending the sliding-window average every $T_{\text{sync}} = 60\,\text{s}$ with payload size $L_{\text{agg}}$):
+Under the hierarchical FQSN model, clients invoke \texttt{DiscoverLocally(region, zone, kind)}. Telemetry data is routed exclusively to local ingestion gateways located within the same local area network (LAN/Incus bridge). Cross-region WAN links are utilized solely for periodic, aggregated statistical summaries (e.g., sending the sliding-window average every $T_{\text{sync}} = 60\,\text{s}$ with payload size $L_{\text{agg}}$):
 \begin{equation}
     B_{\text{local\_WAN}} = R \cdot Z \cdot \left( \frac{L_{\text{agg}}}{T_{\text{sync}}} \right)
 \end{equation}
@@ -109,7 +109,7 @@ Under our hierarchical FQSN model, clients invoke \texttt{DiscoverLocally(region
 \end{equation}
 
 \subsubsection{Empirical Evaluation Parameters}
-In our benchmark deployment:
+In the benchmark deployment:
 \begin{itemize}
     \item $N = 500$ Edge Sensors emitting $f_p = 1.0\,\text{pkt/s}$ with packet size $L_p = 4{,}628\,\text{bytes}$ (HTTP request + JSON telemetry + HMAC header).
     \item Aggregated summaries: $L_{\text{agg}} = 150\,\text{bytes}$ emitted once per minute ($T_{\text{sync}} = 60\,\text{s}$).
@@ -138,7 +138,7 @@ As proven in \cref{tab:bandwidth_results}, locality-aware routing achieves a \te
 
 A critical requirement of scientific evaluation (Slide 13) is identifying system limitations and failure boundaries.
 
-We conducted stress concurrency testing on the Ingestion Gateway and Storage Service under increasing client concurrency ($C = 1 \dots 50$ workers). \cref{tab:bottleneck} and \cref{fig:bottleneck} illustrate the throughput saturation curve and lock contention metrics.
+I conducted stress concurrency testing on the Ingestion Gateway and Storage Service under increasing client concurrency ($C = 1 \dots 50$ workers). \cref{tab:bottleneck} and \cref{fig:bottleneck} illustrate the throughput saturation curve and lock contention metrics.
 
 \begin{table}[htbp]
 \centering
