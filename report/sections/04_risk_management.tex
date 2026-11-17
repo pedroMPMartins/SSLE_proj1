@@ -18,39 +18,40 @@ To evaluate threat interactions, I construct an Attack-Defense Tree~\citep{kordy
 \begin{figure}[htbp]
 \centering
 \begin{tikzpicture}[
-    scale=0.85, transform shape,
-    goal/.style={rectangle, draw=red!80!black, fill=red!15, rounded corners, thick, align=center, font=\footnotesize\bfseries, minimum height=0.9cm},
-    attack/.style={rectangle, draw=red!70!black, fill=red!5, rounded corners, thick, align=center, font=\scriptsize, minimum height=0.8cm},
-    defense/.style={rectangle, draw=green!60!black, fill=green!15, rounded corners, thick, align=center, font=\scriptsize, minimum height=0.8cm},
-    gate/.style={circle, draw=black!80, fill=gray!20, thick, font=\tiny\bfseries, inner sep=1.5pt},
+    scale=0.92, transform shape,
+    goal/.style={rectangle, draw=red!80!black, fill=red!15, rounded corners, thick, align=center, font=\small\bfseries, minimum height=1.0cm, minimum width=7.0cm},
+    attack/.style={rectangle, draw=red!70!black, fill=red!5, rounded corners, thick, align=center, font=\footnotesize, minimum height=1.0cm, text width=3.3cm},
+    defense/.style={rectangle, draw=green!60!black, fill=green!15, rounded corners, thick, align=center, font=\footnotesize, minimum height=1.2cm, text width=3.3cm},
     edge/.style={-Latex, thick, draw=black!70},
     defedge/.style={-Latex, dashed, thick, draw=green!60!black}
 ]
 
-% Root
-\node[goal] (root) {Compromise SSLE Telemetry Architecture};
+% Root Goal at (0, 0)
+\node[goal] (root) at (0, 0) {Compromise SSLE Telemetry Architecture};
 
-% Tier 1 Attacks
-\node[attack, below left=1.2cm and 3.5cm of root] (t1) {T1: Remote Code\\Execution (Shellshock)};
-\node[attack, below left=1.2cm and 0.8cm of root] (t2) {T2: Volumetric DoS\\\& Resource Exhaustion};
-\node[attack, below right=1.2cm and 0.8cm of root] (t3) {T3: In-Flight MitM\\Payload Tampering};
-\node[attack, below right=1.2cm and 3.5cm of root] (t4) {T4: Service Registry\\Rogue Deregistration};
+% Tier 1 Attacks at y = -2.0
+\node[attack] (t1) at (-5.7, -2.0) {T1: Remote Code\\Execution (Shellshock)};
+\node[attack] (t2) at (-1.9, -2.0) {T2: Volumetric DoS\\\& Resource Starvation};
+\node[attack] (t3) at (1.9, -2.0) {T3: In-Flight MitM\\Payload Tampering};
+\node[attack] (t4) at (5.7, -2.0) {T4: Service Registry\\Rogue Deregistration};
 
-\draw[edge] (root) -- (t1);
-\draw[edge] (root) -- (t2);
-\draw[edge] (root) -- (t3);
-\draw[edge] (root) -- (t4);
+% Edges from root to attacks
+\draw[edge] (root.south) -- (t1.north);
+\draw[edge] (root.south) -- (t2.north);
+\draw[edge] (root.south) -- (t3.north);
+\draw[edge] (root.south) -- (t4.north);
 
-% Defenses
-\node[defense, below=0.8cm of t1] (d1) {D1: Shellshock Regex\\Filter \& Wazuh Active\\Response (\texttt{firewall-drop})};
-\node[defense, below=0.8cm of t2] (d2) {D2: Token Bucket Rate\\Limiter (15 rps) \&\\Payload Clamp (1 MB)};
-\node[defense, below=0.8cm of t3] (d3) {D3: HMAC-SHA256\\Signatures \& 10s\\Replay Window Drift};
-\node[defense, below=0.8cm of t4] (d4) {D4: Bearer Admin\\Token Auth \& FQSN\\Consistency Checks};
+% Defenses at y = -4.2
+\node[defense] (d1) at (-5.7, -4.2) {D1: Shellshock Regex\\Filter \& Wazuh SIEM\\(\texttt{firewall-drop})};
+\node[defense] (d2) at (-1.9, -4.2) {D2: Token Bucket (15 rps)\\\& Request Payload\\Clamp ($1\,\text{MB}$)};
+\node[defense] (d3) at (1.9, -4.2) {D3: HMAC-SHA256\\Signatures \& 10s\\Replay Window Drift};
+\node[defense] (d4) at (5.7, -4.2) {D4: Bearer Admin\\Token Auth \& FQSN\\Consistency Checks};
 
-\draw[defedge] (d1) -- node[right, font=\tiny] {Mitigates} (t1);
-\draw[defedge] (d2) -- node[right, font=\tiny] {Throttles} (t2);
-\draw[defedge] (d3) -- node[right, font=\tiny] {Rejects} (t3);
-\draw[defedge] (d4) -- node[right, font=\tiny] {Denies} (t4);
+% Defenses to attacks
+\draw[defedge] (d1) -- node[right, font=\scriptsize] {Mitigates} (t1);
+\draw[defedge] (d2) -- node[right, font=\scriptsize] {Throttles} (t2);
+\draw[defedge] (d3) -- node[right, font=\scriptsize] {Rejects} (t3);
+\draw[defedge] (d4) -- node[right, font=\scriptsize] {Denies} (t4);
 
 \end{tikzpicture}
 \caption{Attack-Defense Tree (ADTree) for Project 1: Adversarial threats ($T_1 \dots T_4$) and their corresponding cryptographic, rate-limiting, and SIEM countermeasures ($D_1 \dots D_4$).}
