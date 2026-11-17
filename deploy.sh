@@ -644,7 +644,7 @@ echo "--------------------------------------------------------------------------
 
 echo -e "\n${GREEN}${BOLD}Useful Access Endpoints:${NC}"
 echo -e "  - Prometheus Dashboard:     ${CYAN}http://${PROM_IP}:9090${NC}"
-echo -e "  - Prometheus Targets:       ${CYAN}http://${PROM_IP}:9090/targets${NC}"
+echo -e "  - Prometheus Targets:       ${CYAN}http://${PROM_IP}:9090/classic/targets${NC} (or API: ${CYAN}/api/v1/targets${NC})"
 echo -e "  - Service Registry:         ${CYAN}http://${REG_IP}:5050/services${NC}"
 echo -e "  - Incident Localization:    ${CYAN}http://${REG_IP}:5050/services/locate/ingestion${NC}"
 echo -e "  - Ingestion Gateway:        ${CYAN}http://${INGEST_IP}:5001/health${NC}"
