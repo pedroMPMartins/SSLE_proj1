@@ -1,7 +1,7 @@
 \section{Quantitative Scalability Evaluation}
 \label{sec:evaluation}
 
-The course guidelines (Slides 4, 7, and 12) require an explicit, quantitative evaluation of the solution's scalability, bottleneck identification, and mathematical proof of bandwidth optimization. This section presents empirical benchmark results obtained from the automated evaluation harness (\texttt{scripts/run\_scalability\_benchmark.sh} and Go micro-benchmarks).
+The course guidelines require an explicit, quantitative evaluation of the solution's scalability, bottleneck identification, and mathematical proof of bandwidth optimization. This section presents empirical benchmark results obtained from the automated evaluation harness (\texttt{scripts/run\_scalability\_benchmark.sh} and Go micro-benchmarks).
 
 \subsection{Service Registry Complexity \& Scalability}
 I evaluate the Service Registry under horizontal scaling from $N = 10$ to $N = 1000$ services.
@@ -23,7 +23,7 @@ Cryptographic signature verification (\texttt{BenchmarkHMACSignatureVerification
 
 \cref{tab:scale_benchmark} and \cref{fig:registry_latency} present the HTTP-level performance under scaling service registries ($N = 10 \dots 1000$).
 
-\begin{table}[htbp]
+\begin{table}[H]
 \centering
 \footnotesize
 \caption{Service Registry Scalability Benchmark ($N = 10 \dots 1000$).}
@@ -41,7 +41,9 @@ Cryptographic signature verification (\texttt{BenchmarkHMACSignatureVerification
 \end{tabularx}
 \end{table}
 
-\begin{figure}[htbp]
+The resulting latency distribution across percentiles is visualized in \cref{fig:registry_latency}.
+
+\begin{figure}[H]
 \centering
 \begin{tikzpicture}
 \begin{axis}[
@@ -82,10 +84,10 @@ Cryptographic signature verification (\texttt{BenchmarkHMACSignatureVerification
 The empirical results confirm that lookup latency remains strictly sub-millisecond across all percentiles, exhibiting $\mathcal{O}(1)$ scaling characteristics.
 
 % ==============================================================================
-\subsection{Quantitative Bandwidth Optimization Model (Slide 7 Bonus)}
+\subsection{Quantitative Bandwidth Optimization Model}
 \label{sec:bandwidth}
 
-Slide 7 of the course guidelines specifies a bonus objective: \textit{Ability to monitor elements by location, optimizing consumed bandwidth}.
+The course guidelines specify an advanced objective: \textit{Ability to monitor elements by location, optimizing consumed bandwidth}.
 
 \subsubsection{Mathematical Model Formulation}
 Consider a multi-region deployment consisting of $R$ geographic regions, each containing $Z$ network zones, with $S$ edge sensors and microservices per zone. Total global instances is $N = R \cdot Z \cdot S$. Each sensor emits telemetry packets of size $L_p$ bytes at frequency $f_p$ packets/second.
@@ -115,7 +117,9 @@ In the benchmark deployment:
     \item Aggregated summaries: $L_{\text{agg}} = 150\,\text{bytes}$ emitted once per minute ($T_{\text{sync}} = 60\,\text{s}$).
 \end{itemize}
 
-\begin{table}[htbp]
+The quantitative comparison between naïve global WAN polling and locality-aware routing under these parameters is detailed in \cref{tab:bandwidth_results}.
+
+\begin{table}[H]
 \centering
 \small
 \caption{Empirical WAN Bandwidth Optimization Results ($N = 500$ sensors).}
@@ -136,11 +140,11 @@ As proven in \cref{tab:bandwidth_results}, locality-aware routing achieves a \te
 \subsection{Architectural Bottleneck Identification \& SQLite Lock Contention}
 \label{sec:bottleneck}
 
-A critical requirement of scientific evaluation (Slide 13) is identifying system limitations and failure boundaries.
+A critical requirement of scientific evaluation is identifying system limitations and failure boundaries.
 
 I conducted stress concurrency testing on the Ingestion Gateway and Storage Service under increasing client concurrency ($C = 1 \dots 50$ workers). \cref{tab:bottleneck} and \cref{fig:bottleneck} illustrate the throughput saturation curve and lock contention metrics.
 
-\begin{table}[htbp]
+\begin{table}[H]
 \centering
 \footnotesize
 \caption{Concurrency Stress Test and Storage Lock Contention Analysis.}
@@ -158,7 +162,9 @@ I conducted stress concurrency testing on the Ingestion Gateway and Storage Serv
 \end{tabularx}
 \end{table}
 
-\begin{figure}[htbp]
+The corresponding relationship between system throughput and database write lock contention is plotted in \cref{fig:bottleneck}.
+
+\begin{figure}[H]
 \centering
 \begin{tikzpicture}
 \begin{axis}[

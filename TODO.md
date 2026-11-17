@@ -10,8 +10,8 @@ Current notes:
 - [x] in figure 1, the boxes with the prometeus server and the wazuh manager have text that is overlapping. Some of that small text that should be appearing outside is, in fact, inside and overalapping the rest of the text. Additionally, the Health Exporter box seems to be fully overlapping the Ingestion Gateway. Same with the Prometeus server being overlaping in it's entirety the Diagnostics box. Please ensure that there are no overlappings.
 - [x] change mentions of "we" to "I". This is an individual project.
 - [x] figure 2 has some of the boxes overlaping each other, please ensure that this does not happen.
-- when mentioning requirements (or anything for that matter), do not mention specific slides in the guidelines, there is no need for that.
-- Please ensure that tables and figures appear exactly where they are supposed, even if space needs to be left open. Also, ensure that all tables and figures are mentioned in the text (the previous text needs to mention them).
+- [x] when mentioning requirements (or anything for that matter), do not mention specific slides in the guidelines, there is no need for that.
+- [x] Please ensure that tables and figures appear exactly where they are supposed, even if space needs to be left open. Also, ensure that all tables and figures are mentioned in the text (the previous text needs to mention them).
 - ensure that formated text (for example: <if_matched_group>web</if_matched_gro) doesn't continue after the page borders and goes off page.
 - Table 3 is going off the page. Ensure that it does not go over border. Same problem for Table 4 and 5.
 - Remove mentions of project 2. I don't even know what that is going to be, so no need to mention it. Instead of mentioning project 2, mention future work. No need to mention project 2 specifically.
