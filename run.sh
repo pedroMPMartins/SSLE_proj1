@@ -224,7 +224,7 @@ REGISTRY_URL="${REGISTRY_URL}" \
 STORAGE_URL="${STORAGE_URL}" \
 ACCESS_LOG_PATH="${ACCESS_LOG_PATH}" \
 ENABLE_RATE_LIMIT="true" \
-RATE_LIMIT_RPS="15.0" \
+RATE_LIMIT_RPS="5.0" \
 ENABLE_INPUT_VALIDATION="true" \
 MIN_TEMP="-50.0" \
 MAX_TEMP="100.0" \
@@ -393,7 +393,7 @@ print_stage "5/9" "Threat 2: Massive Denial-of-Service Disruptions & Botnets"
 
 log_info "Adversary Vector: High-concurrency burst flood attempting resource exhaustion..."
 THROTTLED=0
-for i in {1..20}; do
+for i in {1..25}; do
     CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${INGESTION_URL}/ingest" \
         -H "Content-Type: application/json" \
         -d '{"device_id":"botnet-flood-node","temperature":21.5}')
@@ -403,22 +403,28 @@ for i in {1..20}; do
 done
 
 if [ "$THROTTLED" -gt 0 ]; then
-    log_success "Token-Bucket Rate Limiter Active: ${THROTTLED}/20 flood requests throttled with HTTP 429 Too Many Requests!"
+    log_success "Token-Bucket Rate Limiter Active: ${THROTTLED}/25 flood requests throttled with HTTP 429 Too Many Requests!"
 else
     log_warning "Rate limiter did not throttle requests in this window."
 fi
 
+# Allow token bucket to replenish before subsequent tests
+sleep 1.5
+
 log_info "Testing Payload Capping Defense (2MB Oversized DoS Memory Probe)..."
-OVERSIZED=$(python3 -c "print('A' * (2 * 1024 * 1024))")
-OVERSIZED_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${INGESTION_URL}/ingest" \
+OVERSIZED_CODE=$(python3 -c "print('A' * (2 * 1024 * 1024))" | curl -s -o /dev/null -w "%{http_code}" \
+    -X POST "${INGESTION_URL}/ingest" \
     -H "Content-Type: application/json" \
-    -d "$OVERSIZED" || echo "400")
+    --data-binary @- || echo "400")
 
 if [ "$OVERSIZED_CODE" -eq 400 ]; then
     log_success "Payload Capping Defense: Oversized 2MB payload rejected with HTTP 400 Bad Request via http.MaxBytesReader!"
 else
     log_info "Oversized request handled with code: $OVERSIZED_CODE"
 fi
+
+# Allow token bucket to replenish before Stage 6
+sleep 1.5
 
 # ------------------------------------------------------------------------------
 # STAGE 6: Threat 3 — Route & Signals Hijacking (MitM Payload Tampering)
