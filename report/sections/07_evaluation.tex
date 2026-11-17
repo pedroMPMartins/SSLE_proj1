@@ -88,7 +88,7 @@ The empirical results confirm that lookup latency remains strictly sub-milliseco
 Slide 7 of the course guidelines specifies a bonus objective: \textit{Ability to monitor elements by location, optimizing consumed bandwidth}.
 
 \subsubsection{Mathematical Model Formulation}
-Consider a multi-region deployment consisting of $R$ geographic regions, each containing $Z$ network zones, with $S$ edge sensors and microservices per zone. Total global instances is $N = R \cdot Z \cdot S$. Each sensor emits telemetry packets of size $L_p$ bytes at frequency $f_p$ packets/second. 
+Consider a multi-region deployment consisting of $R$ geographic regions, each containing $Z$ network zones, with $S$ edge sensors and microservices per zone. Total global instances is $N = R \cdot Z \cdot S$. Each sensor emits telemetry packets of size $L_p$ bytes at frequency $f_p$ packets/second.
 
 \paragraph{Model A: Naïve Global Polling across WAN.}
 In a flat, unpartitioned architecture without locality awareness, edge sensors or consumers query a central global registry across inter-region WAN links, transmitting readings across region boundaries:
@@ -136,7 +136,7 @@ As proven in Table~\ref{tab:bandwidth_results}, locality-aware routing achieves 
 \subsection{Architectural Bottleneck Identification \& SQLite Lock Contention}
 \label{sec:bottleneck}
 
-A critical requirement of scientific evaluation (Slide 13) is identifying system limitations and failure boundaries: \textit{describing why the solution is not perfect also earns points}.
+A critical requirement of scientific evaluation (Slide 13) is identifying system limitations and failure boundaries.
 
 We conducted stress concurrency testing on the Ingestion Gateway and Storage Service under increasing client concurrency ($C = 1 \dots 50$ workers). Table~\ref{tab:bottleneck} and Figure~\ref{fig:bottleneck} illustrate the throughput saturation curve and lock contention metrics.
 
@@ -200,10 +200,3 @@ We conducted stress concurrency testing on the Ingestion Gateway and Storage Ser
 
 \subsubsection{Root Cause Analysis of the Bottleneck}
 While the stateless Ingestion Gateway scales efficiently across CPU cores, the single-node SQLite storage service enforces serialized table-level write locks. Under high concurrency ($C \ge 25$), transactions queue up waiting for the Write-Ahead Log (WAL) commit lock. At $C = 50$, lock contention reaches $42.1\%$, returning \texttt{SQLITE\_BUSY} errors and capping aggregate throughput at $\approx 425\,\text{req/s}$.
-
-\subsection{Conceptual Bridge to Project 2 (Attack Tolerance \& BFT Replication)}
-This empirical bottleneck provides a direct conceptual and architectural bridge to **Project 2 (Attack Tolerance Mechanisms -- Slide 13)**:
-\begin{enumerate}
-    \item \textbf{Single Point of Failure (SPOF):} The single SQLite storage container represents both a performance bottleneck and a single point of failure. If an adversary compromises this node, all telemetry history is corrupted.
-    \item \textbf{Transition to Distributed State Machine Replication:} In Project 2, single-node serialized storage must be replaced with a distributed Byzantine Fault Tolerant (BFT) replicated state machine (such as PBFT~\citep{castro2002practical} or Raft). A quorum-based consensus protocol will allow the system to tolerate arbitrary (Byzantine) compromised nodes while eliminating single-node write lock serialization.
-\end{enumerate}
