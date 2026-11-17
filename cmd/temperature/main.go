@@ -138,8 +138,15 @@ func main() {
 	// Start background sensor loop
 	go sendTemp()
 
-	log.Printf("Temperature sensor started (ID: %s) on :%s. Target registry: %s\n", deviceID, port, registryURL)
-	if err := http.ListenAndServe(":"+port, mux); err != nil {
+	// Wrap mux with generic DoS protection (token-bucket rate limiting and payload clamping)
+	dosCfg := function.LoadDoSConfigFromEnv()
+	protectedHandler := function.DoSProtectionMiddleware(mux, dosCfg)
+
+	log.Printf("Temperature sensor started (ID: %s) on :%s (DoS Defense: RateLimit=%v [RPS=%.1f]). Target registry: %s\n",
+		deviceID, port, dosCfg.EnableRateLimit, dosCfg.RateLimitRPS, registryURL)
+
+	server := function.NewHardenedServer(":"+port, protectedHandler)
+	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("Temperature server error: %v", err)
 	}
 }

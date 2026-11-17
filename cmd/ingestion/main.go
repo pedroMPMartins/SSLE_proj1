@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -37,9 +36,8 @@ var (
 	maxTempAllowed           = parseFloatEnv("MAX_TEMP", 100.0)
 	rateLimitRPS             = parseFloatEnv("RATE_LIMIT_RPS", 20.0)
 
-	// Rate limiter state: token bucket per IP
-	rateLimiterMu sync.Mutex
-	clientsBucket = make(map[string]*tokenBucket)
+	// DoS and Rate Limiter configuration (shared across all microservices)
+	dosCfg = function.LoadDoSConfigFromEnv()
 
 	// Access logging for Wazuh SIEM integration (Guide 4)
 	accessLogPath = getEnv("ACCESS_LOG_PATH", "/var/log/ssle/ingestion_access.log")
@@ -136,65 +134,14 @@ func (r *statusRecorder) Write(b []byte) (int, error) {
 }
 
 func extractClientIP(r *http.Request) string {
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		parts := strings.Split(xff, ",")
-		return strings.TrimSpace(parts[0])
-	}
-	if xri := r.Header.Get("X-Real-IP"); xri != "" {
-		return strings.TrimSpace(xri)
-	}
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-	return host
-}
-
-type tokenBucket struct {
-	tokens         float64
-	capacity       float64
-	refillRate     float64 // tokens per second
-	lastRefillTime time.Time
-}
-
-func (tb *tokenBucket) allow() bool {
-	now := time.Now()
-	elapsed := now.Sub(tb.lastRefillTime).Seconds()
-	tb.lastRefillTime = now
-
-	tb.tokens += elapsed * tb.refillRate
-	if tb.tokens > tb.capacity {
-		tb.tokens = tb.capacity
-	}
-
-	if tb.tokens >= 1.0 {
-		tb.tokens -= 1.0
-		return true
-	}
-	return false
+	return function.ExtractClientIP(r)
 }
 
 func isRateLimited(remoteAddr string) bool {
-	host, _, err := net.SplitHostPort(remoteAddr)
-	if err != nil {
-		host = remoteAddr
+	if dosCfg.RateLimiter == nil {
+		return false
 	}
-
-	rateLimiterMu.Lock()
-	defer rateLimiterMu.Unlock()
-
-	bucket, exists := clientsBucket[host]
-	if !exists {
-		bucket = &tokenBucket{
-			tokens:         rateLimitRPS,
-			capacity:       rateLimitRPS * 2,
-			refillRate:     rateLimitRPS,
-			lastRefillTime: time.Now(),
-		}
-		clientsBucket[host] = bucket
-	}
-
-	return !bucket.allow()
+	return !dosCfg.RateLimiter.Allow(remoteAddr)
 }
 
 func isDeviceBlocked(deviceID string) bool {
@@ -275,17 +222,7 @@ func main() {
 			}
 		}
 
-		// Defense 1: Rate Limiting
-		if enableRateLimit && isRateLimited(r.RemoteAddr) {
-			w.Header().Set("Retry-After", "1")
-			function.RespondJSON(w, http.StatusTooManyRequests, map[string]string{
-				"error": "Rate limit exceeded. Please throttle requests.",
-			})
-			return
-		}
-
 		// Cap max body size to 1MB to avoid memory exhaustion
-		r.Body = http.MaxBytesReader(w, r.Body, 1048576)
 		bodyBytes, err := io.ReadAll(r.Body)
 		if err != nil || len(bodyBytes) == 0 {
 			function.RespondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid or empty request body"})
@@ -376,10 +313,13 @@ func main() {
 		w.Write(respBody)
 	})
 
-	// Wrap mux with access logging middleware for Wazuh SIEM
+	// Wrap mux with generic DoS protection (token-bucket rate limiting and payload clamping)
+	protectedHandler := function.DoSProtectionMiddleware(mux, dosCfg)
+
+	// Wrap with access logging middleware for Wazuh SIEM
 	loggingHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		rec := &statusRecorder{ResponseWriter: w}
-		mux.ServeHTTP(rec, r)
+		protectedHandler.ServeHTTP(rec, r)
 
 		clientIP := extractClientIP(r)
 		status := rec.status
@@ -394,15 +334,7 @@ func main() {
 		enableRateLimit, rateLimitRPS, enableInputValidation, minTempAllowed, maxTempAllowed, enableShellshockDefense, blockedDevicesList)
 
 	// Production HTTP Server hardening against Slowloris and connection-flooding DDoS attacks
-	server := &http.Server{
-		Addr:              ":" + port,
-		Handler:           loggingHandler,
-		ReadHeaderTimeout: 3 * time.Second,
-		ReadTimeout:       5 * time.Second,
-		WriteTimeout:      10 * time.Second,
-		IdleTimeout:       15 * time.Second,
-		MaxHeaderBytes:    1 << 20, // 1MB header limit
-	}
+	server := function.NewHardenedServer(":"+port, loggingHandler)
 
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("Server failed: %v", err)

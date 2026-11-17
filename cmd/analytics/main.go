@@ -107,8 +107,15 @@ func main() {
 		function.RespondJSON(w, http.StatusOK, map[string]any{"average_temperature": rounded})
 	})
 
-	log.Printf("Analytics service listening on :%s (ID: %s)\n", port, serviceID)
-	if err := http.ListenAndServe(":"+port, mux); err != nil {
+	// Wrap mux with generic DoS protection (token-bucket rate limiting and payload clamping)
+	dosCfg := function.LoadDoSConfigFromEnv()
+	protectedHandler := function.DoSProtectionMiddleware(mux, dosCfg)
+
+	log.Printf("Analytics service listening on :%s (ID: %s, DoS Defense: RateLimit=%v [RPS=%.1f], MaxBodyBytes=%d)\n",
+		port, serviceID, dosCfg.EnableRateLimit, dosCfg.RateLimitRPS, dosCfg.MaxBodyBytes)
+
+	server := function.NewHardenedServer(":"+port, protectedHandler)
+	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("Server failed: %v", err)
 	}
 }

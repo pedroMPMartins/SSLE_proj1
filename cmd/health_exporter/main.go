@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"simple_soa/internal/function"
 	"simple_soa/internal/models"
 	"sort"
 	"strings"
@@ -218,7 +219,15 @@ func main() {
 		w.Write([]byte(`{"status":"UP","service":"health_exporter"}`))
 	})
 
-	if err := http.ListenAndServe(":"+port, mux); err != nil {
+	// Wrap mux with generic DoS protection (token-bucket rate limiting and payload clamping)
+	dosCfg := function.LoadDoSConfigFromEnv()
+	protectedHandler := function.DoSProtectionMiddleware(mux, dosCfg)
+
+	log.Printf("Health Exporter listening on :%s (DoS Defense: RateLimit=%v [RPS=%.1f], MaxBodyBytes=%d)\n",
+		port, dosCfg.EnableRateLimit, dosCfg.RateLimitRPS, dosCfg.MaxBodyBytes)
+
+	server := function.NewHardenedServer(":"+port, protectedHandler)
+	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("Health Exporter server failed: %v", err)
 	}
 }

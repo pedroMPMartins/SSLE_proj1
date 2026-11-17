@@ -16,6 +16,7 @@ Current notes:
 - [x] Table 3 is going off the page. Ensure that it does not go over border. Same problem for Table 4 and 5.
 - [x] Remove mentions of project 2. I don't even know what that is going to be, so no need to mention it. Instead of mentioning project 2, mention future work. No need to mention project 2 specifically.
 - [x] mention the limitations of the solution for the Man in the middle attacks. Specifically towards problems related to clock drift in the sensor. Mention, that a valid sensor might just have a clock drift and end up being blocked (if their internal clock has a drift bigger than 10 seconds). And despite this being something that can happen, we accepted this downside, since it would protect us from other attacks.
+- [x] generalize ingestion's DoS prevention logic (token-bucket rate limiting per IP and payload size clamping) into shared middleware and adopt across all microservices (registry, storage, analytics, temperature, and exporters).
 
 
 Possible improvements:

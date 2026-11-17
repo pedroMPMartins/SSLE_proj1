@@ -249,8 +249,15 @@ func main() {
 		function.RespondJSON(w, http.StatusOK, filteredMap)
 	})
 
-	log.Printf("Hierarchical Service Registry listening on :%s\n", port)
-	if err := http.ListenAndServe(":"+port, mux); err != nil {
+	// Wrap mux with generic DoS protection (token-bucket rate limiting and payload clamping)
+	dosCfg := function.LoadDoSConfigFromEnv()
+	protectedHandler := function.DoSProtectionMiddleware(mux, dosCfg)
+
+	log.Printf("Hierarchical Service Registry listening on :%s (DoS Defense: RateLimit=%v [RPS=%.1f], MaxBodyBytes=%d)\n",
+		port, dosCfg.EnableRateLimit, dosCfg.RateLimitRPS, dosCfg.MaxBodyBytes)
+
+	server := function.NewHardenedServer(":"+port, protectedHandler)
+	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("Registry server failed: %v", err)
 	}
 }

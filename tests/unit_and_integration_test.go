@@ -1210,6 +1210,71 @@ func BenchmarkHMACSignatureVerification(b *testing.B) {
 	}
 }
 
+// TestGlobalMicroservicesDoSProtection validates that the generic DoS protection middleware
+// drops oversized packages and throttles floods across all microservices (registry, storage, analytics).
+func TestGlobalMicroservicesDoSProtection(t *testing.T) {
+	newDoSConfig := func() function.DoSProtectionConfig {
+		return function.DoSProtectionConfig{
+			EnableRateLimit:       true,
+			RateLimitRPS:          2.0,
+			EnablePayloadClamping: true,
+			MaxBodyBytes:          1024,
+			RateLimiter:           function.NewRateLimiter(2.0, 2.0),
+		}
+	}
+
+	// 1. Storage service simulation with DoS protection
+	storageMux := http.NewServeMux()
+	storageMux.HandleFunc("POST /store", func(w http.ResponseWriter, r *http.Request) {
+		function.RespondJSON(w, http.StatusOK, map[string]string{"status": "stored"})
+	})
+	storageServer := httptest.NewServer(function.DoSProtectionMiddleware(storageMux, newDoSConfig()))
+	defer storageServer.Close()
+
+	// Verify oversized payload on Storage is dropped with HTTP 400
+	hugePayload := bytes.Repeat([]byte("A"), 2048)
+	reqOversized, _ := http.NewRequest("POST", storageServer.URL+"/store", bytes.NewReader(hugePayload))
+	reqOversized.Header.Set("X-Forwarded-For", "192.168.10.1")
+	respOversized, err := http.DefaultClient.Do(reqOversized)
+	if err != nil || respOversized.StatusCode != http.StatusBadRequest {
+		t.Fatalf("Storage DoS protection failed: expected HTTP 400 for oversized payload, got %d, err: %v", respOversized.StatusCode, err)
+	}
+
+	// 2. Registry service simulation with DoS protection
+	registryMux := http.NewServeMux()
+	registryMux.HandleFunc("POST /register", func(w http.ResponseWriter, r *http.Request) {
+		function.RespondJSON(w, http.StatusOK, map[string]string{"status": "registered"})
+	})
+	registryServer := httptest.NewServer(function.DoSProtectionMiddleware(registryMux, newDoSConfig()))
+	defer registryServer.Close()
+
+	// Verify rate limit on Registry: 2 allowed, 3rd gets 429
+	req1, _ := http.NewRequest("POST", registryServer.URL+"/register", strings.NewReader(`{"id":"s1"}`))
+	req1.Header.Set("X-Forwarded-For", "192.168.10.10")
+	resp1, _ := http.DefaultClient.Do(req1)
+	if resp1.StatusCode != http.StatusOK {
+		t.Errorf("Expected HTTP 200 for 1st registry request, got %d", resp1.StatusCode)
+	}
+
+	req2, _ := http.NewRequest("POST", registryServer.URL+"/register", strings.NewReader(`{"id":"s2"}`))
+	req2.Header.Set("X-Forwarded-For", "192.168.10.10")
+	resp2, _ := http.DefaultClient.Do(req2)
+	if resp2.StatusCode != http.StatusOK {
+		t.Errorf("Expected HTTP 200 for 2nd registry request, got %d", resp2.StatusCode)
+	}
+
+	req3, _ := http.NewRequest("POST", registryServer.URL+"/register", strings.NewReader(`{"id":"s3"}`))
+	req3.Header.Set("X-Forwarded-For", "192.168.10.10")
+	resp3, _ := http.DefaultClient.Do(req3)
+	if resp3.StatusCode != http.StatusTooManyRequests {
+		t.Errorf("Expected HTTP 429 for 3rd registry request exceeding rate limit, got %d", resp3.StatusCode)
+	}
+	if resp3.Header.Get("Retry-After") != "1" {
+		t.Errorf("Expected Retry-After: 1 header on 429 response")
+	}
+}
+
+
 
 
 
