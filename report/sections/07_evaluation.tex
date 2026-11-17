@@ -21,7 +21,7 @@ Go micro-benchmarks (\texttt{BenchmarkRegistryDirectLookup}) on an Intel Core i7
 \end{equation}
 Cryptographic signature verification (\texttt{BenchmarkHMACSignatureVerification}) executed at $1{,}977\,\text{ns/op}$ ($\approx 1.9\,\mu\text{s/op}$), confirming that cryptographic verification introduces virtually zero computational overhead at line rate.
 
-Table~\ref{tab:scale_benchmark} and Figure~\ref{fig:registry_latency} present the HTTP-level performance under scaling service registries ($N = 10 \dots 1000$).
+\cref{tab:scale_benchmark} and \cref{fig:registry_latency} present the HTTP-level performance under scaling service registries ($N = 10 \dots 1000$).
 
 \begin{table}[htbp]
 \centering
@@ -130,7 +130,7 @@ In our benchmark deployment:
 \end{tabular}
 \end{table}
 
-As proven in Table~\ref{tab:bandwidth_results}, locality-aware routing achieves a \textbf{99.99\% reduction in cross-region WAN bandwidth consumption}, isolating high-frequency noise to local broadcast domains.
+As proven in \cref{tab:bandwidth_results}, locality-aware routing achieves a \textbf{99.99\% reduction in cross-region WAN bandwidth consumption}, isolating high-frequency noise to local broadcast domains.
 
 % ==============================================================================
 \subsection{Architectural Bottleneck Identification \& SQLite Lock Contention}
@@ -138,7 +138,7 @@ As proven in Table~\ref{tab:bandwidth_results}, locality-aware routing achieves 
 
 A critical requirement of scientific evaluation (Slide 13) is identifying system limitations and failure boundaries.
 
-We conducted stress concurrency testing on the Ingestion Gateway and Storage Service under increasing client concurrency ($C = 1 \dots 50$ workers). Table~\ref{tab:bottleneck} and Figure~\ref{fig:bottleneck} illustrate the throughput saturation curve and lock contention metrics.
+We conducted stress concurrency testing on the Ingestion Gateway and Storage Service under increasing client concurrency ($C = 1 \dots 50$ workers). \cref{tab:bottleneck} and \cref{fig:bottleneck} illustrate the throughput saturation curve and lock contention metrics.
 
 \begin{table}[htbp]
 \centering

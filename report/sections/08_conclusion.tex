@@ -21,7 +21,7 @@ The major achievements of this project are:
 As highlighted in the course guidelines (Slide 13), evaluating why a solution is not perfect provides critical engineering insight:
 \begin{itemize}
     \item \textbf{In-Memory Service Registry as a SPOF:} While the Service Registry provides $O(1)$ lookup performance and sub-millisecond response times, it currently operates as an in-memory process. If the registry container terminates or suffers hardware failure, discovery state is lost, and clients cannot dynamically locate peer services until recovery.
-    \item \textbf{Storage Write Serialization:} As revealed in our concurrency benchmarks (Section~\ref{sec:bottleneck}), single-node SQLite architecture hits severe write lock contention (\texttt{SQLITE\_BUSY}) at $\approx 425\,\text{req/s}$, creating an architectural bottleneck for large sensor fleets.
+    \item \textbf{Storage Write Serialization:} As revealed in our concurrency benchmarks (\cref{sec:bottleneck}), single-node SQLite architecture hits severe write lock contention (\texttt{SQLITE\_BUSY}) at $\approx 425\,\text{req/s}$, creating an architectural bottleneck for large sensor fleets.
     \item \textbf{Symmetric Key Distribution Overhead:} While HMAC-SHA256 provides computational efficiency ($\approx 1.9\,\mu\text{s/op}$), it relies on a pre-shared symmetric key. In massive deployments with millions of heterogeneous edge nodes, managing, rotating, and revoking shared secrets introduces operational complexity.
 \end{itemize}
 

@@ -1,7 +1,7 @@
 \section{Service Architecture Used}
 \label{sec:architecture}
 
-To satisfy the scalability, observability, and threat-resilience mandates of Project 1, we implemented a modular, 7-tier Service-Oriented Architecture deployed across isolated Linux Containers (Incus). The complete architectural topology and data flow are illustrated in Figure~\ref{fig:architecture}.
+To satisfy the scalability, observability, and threat-resilience mandates of Project 1, we implemented a modular, 7-tier Service-Oriented Architecture deployed across isolated Linux Containers (Incus). The complete architectural topology and data flow are illustrated in \cref{fig:architecture}.
 
 \begin{figure}[htbp]
 \centering
@@ -90,7 +90,7 @@ When an alert fires in production, resolving an alert to the exact container and
 \begin{equation}
     \texttt{GET /services/locate/\{query\}}
 \end{equation}
-where \texttt{\{query\}} accepts an instance ID, exact/partial FQSN, endpoint URL, or functional kind. The registry resolves the query in $O(1)$ time, returning a structured remediation payload (Listing~\ref{lst:locate}).
+where \texttt{\{query\}} accepts an instance ID, exact/partial FQSN, endpoint URL, or functional kind. The registry resolves the query in $O(1)$ time, returning a structured remediation payload (\cref{lst:locate}).
 
 \begin{lstlisting}[caption={Rapid Incident Localization Response for \texttt{ingestion}.}, label={lst:locate}]
 {

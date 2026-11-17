@@ -15,7 +15,7 @@ Conversely, SIEM logs capture \textit{malicious intent} (e.g., an unauthorized I
 Our architecture bridges this gap: we implement a multi-layered correlation engine that uses operational symptoms from Prometheus as the initial trigger, then correlates with Wazuh SIEM security logs to establish causality.
 
 \subsection{The 5-Stage FCAPS Operational Lifecycle}
-Figure~\ref{fig:fcaps} illustrates the 5-stage closed-loop fault management architecture implemented in \texttt{scripts/fcaps\_event\_correlator.py}.
+\cref{fig:fcaps} illustrates the 5-stage closed-loop fault management architecture implemented in \texttt{scripts/fcaps\_event\_correlator.py}.
 
 \begin{figure}[htbp]
 \centering
