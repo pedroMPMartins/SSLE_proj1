@@ -67,7 +67,8 @@ I engineered multi-layered target hardening inside the Go Ingestion Gateway:
 \paragraph{5. Action-Responses Adopted (Wazuh SIEM):}
 When high-rate floods exceed 20 requests within 5 seconds from the same source IP:
 \begin{itemize}
-    \item \textbf{Wazuh Rule 100102 (Level 8):} Detects frequency surge via \texttt{<if\_matched\_group>web</if\_matched\_group>} and \texttt{<same\_source\_ip />}.
+    \item \textbf{Wazuh Rule 100102 (Level 8):} Detects frequency surges via rule tags\\
+    \texttt{<if\_matched\_group>web</if\_matched\_group>} and \texttt{<same\_source\_ip />}.
     \item \textbf{Active Response:} Triggers \texttt{firewall-drop} on the flooding botnet IP, restoring gateway throughput for legitimate clients.
 \end{itemize}
 
@@ -101,7 +102,7 @@ I implement a zero-trust cryptographic verification layer:
     \begin{equation}
         \sigma = \text{HMAC-SHA256}_K(\text{Payload} \mathbin{\Vert} \text{Timestamp})
     \end{equation}
-    The sensor transmits $\sigma$ in header \texttt{X-Sensor-Signature} and timestamp $T_s$ in \texttt{X-Sensor-Timestamp}.
+    The sensor transmits signature $\sigma$ in the \texttt{X-Sensor-Signature} header and timestamp $T_s$ in the \texttt{X-Sensor-Timestamp} header.
     \item \textbf{Constant-Time Verification:} The gateway independently recomputes the HMAC and verifies equivalence using \texttt{hmac.Equal()} to prevent side-channel timing attacks. Any tampering results in an immediate \texttt{HTTP 401 Unauthorized}.
     \item \textbf{Timestamp Replay Window Drift:} The gateway rejects readings where $|T_{\text{server}} - T_s| > \Delta_{\max} = 10\,\text{seconds}$, neutralizing replay attacks.
 \end{itemize}
@@ -126,7 +127,7 @@ Automated unit and live integration tests confirmed that single-byte payload tam
 \small
 \caption{Comparative Matrix of the Three Implemented Syllabus Threats.}
 \label{tab:three_threats_summary}
-\begin{tabularx}{\textwidth}{lXXll}
+\begin{tabularx}{\textwidth}{LXXCC}
 \toprule
 \textbf{Threat Vector} & \textbf{Vulnerability Target} & \textbf{Detection Mechanism} & \textbf{SIEM Rule} & \textbf{Active Response} \\
 \midrule

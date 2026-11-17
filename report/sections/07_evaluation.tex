@@ -28,7 +28,7 @@ Cryptographic signature verification (\texttt{BenchmarkHMACSignatureVerification
 \footnotesize
 \caption{Service Registry Scalability Benchmark ($N = 10 \dots 1000$).}
 \label{tab:scale_benchmark}
-\begin{tabularx}{\textwidth}{lcccc}
+\begin{tabularx}{\textwidth}{LCCCC}
 \toprule
 \textbf{Registered Services ($N$)} & \textbf{Registration Rate (ops/s)} & \textbf{p50 Latency (ms)} & \textbf{p95 Latency (ms)} & \textbf{p99 Latency (ms)} \\
 \midrule
@@ -124,14 +124,14 @@ The quantitative comparison between naïve global WAN polling and locality-aware
 \small
 \caption{Empirical WAN Bandwidth Optimization Results ($N = 500$ sensors).}
 \label{tab:bandwidth_results}
-\begin{tabular}{lccc}
+\begin{tabularx}{\textwidth}{LLCC}
 \toprule
 \textbf{Architecture} & \textbf{Data Flow Routing} & \textbf{WAN Transit Load} & \textbf{Bandwidth Savings} \\
 \midrule
 \textbf{Global WAN Polling} & Raw Packets Across WAN & $18.512\,\text{Mbps}$ & Baseline ($0.0\%$) \\
 \textbf{Locality-Aware Routing} & Intra-Zone LAN + Aggregation & $0.0002\,\text{Mbps}$ & \textbf{99.9989\% Reduction} \\
 \bottomrule
-\end{tabular}
+\end{tabularx}
 \end{table}
 
 As proven in \cref{tab:bandwidth_results}, locality-aware routing achieves a \textbf{99.99\% reduction in cross-region WAN bandwidth consumption}, isolating high-frequency noise to local broadcast domains.
@@ -149,7 +149,7 @@ I conducted stress concurrency testing on the Ingestion Gateway and Storage Serv
 \footnotesize
 \caption{Concurrency Stress Test and Storage Lock Contention Analysis.}
 \label{tab:bottleneck}
-\begin{tabularx}{\textwidth}{lcccc}
+\begin{tabularx}{\textwidth}{CCCCL}
 \toprule
 \textbf{Concurrency ($C$)} & \textbf{Gateway CPU (\%)} & \textbf{Throughput (req/s)} & \textbf{Lock Contention (\%)} & \textbf{System State} \\
 \midrule

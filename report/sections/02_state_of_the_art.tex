@@ -44,6 +44,9 @@ The ITU-T Recommendation M.3400~\citep{itu_fcaps} formalizes the Telecommunicati
 
 Within FCAPS, \textbf{Fault Management} is classically decoupled from security operations: it focuses on detecting hardware and software anomalies, isolating failed components, and restoring service availability without necessarily understanding whether the fault was accidental or malicious. A robust fault management lifecycle follows five deterministic stages:
 \begin{equation}
-    \text{Detecting} \longrightarrow \text{Diagnosing \& Isolating} \longrightarrow \text{Correlating} \longrightarrow \text{Resolution/Mitigation} \longrightarrow \text{Post-Mortem}
+\begin{aligned}
+    \text{Detecting} &\longrightarrow \text{Diagnosing \& Isolating} \longrightarrow \text{Correlating} \\
+    &\longrightarrow \text{Resolution/Mitigation} \longrightarrow \text{Post-Mortem}
+\end{aligned}
 \end{equation}
 In modern enterprise operations, the intersection of Performance metrics and Security logs represents the frontier of automated Root Cause Analysis (RCA). Correlating Prometheus metric breaches with Wazuh security rule triggers allows automated systems to distinguish between innocent resource exhaustion (e.g., traffic organic spikes) and hostile adversarial campaigns (e.g., botnet DDoS or exploit attempts).

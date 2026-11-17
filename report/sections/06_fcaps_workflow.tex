@@ -15,7 +15,7 @@ Conversely, SIEM logs capture \textit{malicious intent} (e.g., an unauthorized I
 The developed architecture bridges this gap: I implement a multi-layered correlation engine that uses operational symptoms from Prometheus as the initial trigger, then correlates with Wazuh SIEM security logs to establish causality.
 
 \subsection{The 5-Stage FCAPS Operational Lifecycle}
-\cref{fig:fcaps} illustrates the 5-stage closed-loop fault management architecture implemented in \texttt{scripts/fcaps\_event\_correlator.py}.
+\cref{fig:fcaps} illustrates the 5-stage closed-loop fault management architecture implemented in the correlation script (\texttt{scripts/}\allowbreak\texttt{fcaps\_event\_correlator.py}).
 
 \begin{figure}[H]
 \centering
@@ -62,10 +62,12 @@ The registry returns the FQSN hierarchy, resolving the exact physical blade (\te
 \subsubsection{Stage 3: Correlating (Cross-Domain Root Cause Analysis)}
 The correlation engine synthesizes operational telemetry with the SIEM security event log (\texttt{/var/log/ssle/ingestion\_access.log}) over a sliding inspection window. It executes deterministic causal mapping:
 \begin{itemize}
-    \item \textbf{Scenario A (Unplanned Infrastructure Outage):} High error rate + liveness failure, but \textit{zero} security alerts in SIEM $\Longrightarrow$ Root Cause: \textbf{APPLICATION\_FAULT / UNPLANNED\_OUTAGE}.
-    \item \textbf{Scenario B (Volumetric Denial-of-Service):} Latency spike ($>150\,\text{ms}$) + CPU saturation ($>80\%$) + Wazuh Rule 100102 alerts $\Longrightarrow$ Root Cause: \textbf{EXPLOITATION\_DDOS\_FLOOD}. Source IP isolated.
-    \item \textbf{Scenario C (Cryptographic Integrity Tampering):} Elevated error rate ($\texttt{HTTP 401}$) + Wazuh Rule 100104 alerts $\Longrightarrow$ Root Cause: \textbf{INTEGRITY\_VIOLATION\_MITM}. Attacker IP isolated.
-    \item \textbf{Scenario D (Exploit Probing):} Elevated error rate ($\texttt{HTTP 403}$) + Wazuh Rule 100100/100101 alerts $\Longrightarrow$ Root Cause: \textbf{EXPLOITATION\_SHELLSHOCK}. Attacker IP isolated.
+    \item \textbf{Scenario A (Unplanned Infrastructure Outage):} High error rate and liveness failure, but \textit{zero} security alerts in SIEM $\Longrightarrow$ Root Cause: \textbf{APPLICATION\_FAULT / UNPLANNED\_OUTAGE}.
+    \item \textbf{Scenario B (Volumetric Denial-of-Service):} Latency surge ($>150\,\text{ms}$), CPU saturation ($>80\%$), and Wazuh Rule 100102 alerts $\Longrightarrow$\\
+    Root Cause: \textbf{EXPLOITATION\_DDOS\_FLOOD} (source IP isolated).
+    \item \textbf{Scenario C (Cryptographic Integrity Tampering):} Elevated error rate (\texttt{HTTP 401}) and Wazuh Rule 100104 alerts $\Longrightarrow$ Root Cause: \textbf{INTEGRITY\_VIOLATION\_MITM} (attacker IP isolated).
+    \item \textbf{Scenario D (Exploit Probing):} Elevated error rate (\texttt{HTTP 403}) and Wazuh Rule 100100/100101 alerts $\Longrightarrow$\\
+    Root Cause: \textbf{EXPLOITATION\_SHELLSHOCK} (attacker IP isolated).
 \end{itemize}
 
 \subsubsection{Stage 4: Resolution / Mitigation (Active Response Execution)}

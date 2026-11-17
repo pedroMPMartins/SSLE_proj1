@@ -12,9 +12,9 @@ Current notes:
 - [x] figure 2 has some of the boxes overlaping each other, please ensure that this does not happen.
 - [x] when mentioning requirements (or anything for that matter), do not mention specific slides in the guidelines, there is no need for that.
 - [x] Please ensure that tables and figures appear exactly where they are supposed, even if space needs to be left open. Also, ensure that all tables and figures are mentioned in the text (the previous text needs to mention them).
-- ensure that formated text (for example: <if_matched_group>web</if_matched_gro) doesn't continue after the page borders and goes off page.
-- Table 3 is going off the page. Ensure that it does not go over border. Same problem for Table 4 and 5.
-- Remove mentions of project 2. I don't even know what that is going to be, so no need to mention it. Instead of mentioning project 2, mention future work. No need to mention project 2 specifically.
+- [x] ensure that formated text (for example: <if_matched_group>web</if_matched_gro) doesn't continue after the page borders and goes off page.
+- [x] Table 3 is going off the page. Ensure that it does not go over border. Same problem for Table 4 and 5.
+- [x] Remove mentions of project 2. I don't even know what that is going to be, so no need to mention it. Instead of mentioning project 2, mention future work. No need to mention project 2 specifically.
 
 
 Possible improvements:
