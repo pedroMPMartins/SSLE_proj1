@@ -50,28 +50,29 @@ incus file push "${SCRIPT_DIR}/lists/alienvault_reputation" "$CONTAINER_NAME/var
 # 5. Configure ruleset list and Active Response inside ossec.conf
 echo "==> Applying ruleset list and Active Response inside ossec.conf..."
 incus exec "$CONTAINER_NAME" -- python3 -c '
+import re
+
 conf_path = "/var/ossec/etc/ossec.conf"
 with open(conf_path, "r") as f:
     content = f.read()
 
 # 1. Declare AlienVault reputation list inside <ruleset>
-if "alienvault_reputation" not in content:
-    if "</ruleset>" in content:
-        content = content.replace("</ruleset>", "    <list>etc/lists/alienvault_reputation</list>\n  </ruleset>")
+if "alienvault_reputation" not in content and "</ruleset>" in content:
+    content = content.replace("</ruleset>", "    <list>etc/lists/alienvault_reputation</list>\n  </ruleset>")
 
-# 2. Insert Active Response inside <ossec_config> before closing tag
-if "100100" not in content:
-    ar_block = """
-  <!-- SSLE Active Response for Cluster-Wide Global SIEM Quarantine -->
+# 2. Insert or replace Active Response for Cluster-Wide Global SIEM Quarantine
+ar_block = """  <!-- SSLE Active Response for Cluster-Wide Global SIEM Quarantine -->
   <active-response>
     <command>firewall-drop</command>
     <location>all</location>
-    <rules_id>100100, 100101, 100102, 100104, 100105, 100106</rules_id>
+    <rules_id>100100, 100101, 100102, 100104, 100106, 100108</rules_id>
     <timeout>60</timeout>
-  </active-response>
-"""
-    if "</ossec_config>" in content:
-        content = content.replace("</ossec_config>", ar_block + "\n</ossec_config>")
+  </active-response>"""
+
+if re.search(r"<active-response>[\s\S]*?<command>firewall-drop</command>[\s\S]*?</active-response>", content):
+    content = re.sub(r"<active-response>[\s\S]*?<command>firewall-drop</command>[\s\S]*?</active-response>", ar_block, content)
+elif "</ossec_config>" in content:
+    content = content.replace("</ossec_config>", ar_block + "\n</ossec_config>")
 
 with open(conf_path, "w") as f:
     f.write(content)

@@ -479,28 +479,29 @@ if [ "$DEPLOY_WAZUH" = true ]; then
 
     log_info "Configuring ruleset list and Active Response inside ossec.conf..."
     incus exec "$WAZUH_CONTAINER" -- python3 -c '
+import re
+
 conf_path = "/var/ossec/etc/ossec.conf"
 with open(conf_path, "r") as f:
     content = f.read()
 
 # 1. Declare AlienVault reputation list inside <ruleset>
-if "alienvault_reputation" not in content:
-    if "</ruleset>" in content:
-        content = content.replace("</ruleset>", "    <list>etc/lists/alienvault_reputation</list>\n  </ruleset>")
+if "alienvault_reputation" not in content and "</ruleset>" in content:
+    content = content.replace("</ruleset>", "    <list>etc/lists/alienvault_reputation</list>\n  </ruleset>")
 
-# 2. Insert Active Response inside <ossec_config> before closing tag
-if "100100" not in content:
-    ar_block = """
-  <!-- SSLE Active Response for All Three Syllabus Threats -->
+# 2. Insert or replace Active Response for Cluster-Wide Global SIEM Quarantine
+ar_block = """  <!-- SSLE Active Response for Cluster-Wide Global SIEM Quarantine -->
   <active-response>
     <command>firewall-drop</command>
-    <location>local</location>
-    <rules_id>100100, 100101, 100102, 100104</rules_id>
+    <location>all</location>
+    <rules_id>100100, 100101, 100102, 100104, 100106, 100108</rules_id>
     <timeout>60</timeout>
-  </active-response>
-"""
-    if "</ossec_config>" in content:
-        content = content.replace("</ossec_config>", ar_block + "\n</ossec_config>")
+  </active-response>"""
+
+if re.search(r"<active-response>[\s\S]*?<command>firewall-drop</command>[\s\S]*?</active-response>", content):
+    content = re.sub(r"<active-response>[\s\S]*?<command>firewall-drop</command>[\s\S]*?</active-response>", ar_block, content)
+elif "</ossec_config>" in content:
+    content = content.replace("</ossec_config>", ar_block + "\n</ossec_config>")
 
 with open(conf_path, "w") as f:
     f.write(content)

@@ -63,10 +63,17 @@
     <group>mitm,tampering,integrity</group>
   </rule>
 
-  <!-- Rule 100105: Repeated HTTP 429 Rate Limit Exceeded across Any Microservice -->
-  <rule id="100105" level="10" frequency="5" timeframe="10">
+  <!-- Rule 100105: Base Rule for HTTP 429 Rate Limit Breaches -->
+  <rule id="100105" level="4">
     <if_group>web|access_log</if_group>
     <id>429</id>
+    <description>SSLE Microservice: Rate limit threshold exceeded (HTTP 429)</description>
+    <group>ratelimit</group>
+  </rule>
+
+  <!-- Rule 100106: Repeated HTTP 429 Rate Limit Violations (Active Response Quarantine) -->
+  <rule id="100106" level="10" frequency="5" timeframe="10">
+    <if_matched_sid>100105</if_matched_sid>
     <same_source_ip />
     <description>SSLE SIEM Alert: Repeated rate-limit threshold violations (HTTP 429) detected from same IP across microservice cluster</description>
     <mitre>
@@ -76,10 +83,17 @@
     <group>dos,flood,ratelimit</group>
   </rule>
 
-  <!-- Rule 100106: Repeated HTTP 413 / Oversized Payload Submissions across Any Microservice -->
-  <rule id="100106" level="10" frequency="3" timeframe="10">
+  <!-- Rule 100107: Base Rule for HTTP 413 Oversized Payload Submissions -->
+  <rule id="100107" level="4">
     <if_group>web|access_log</if_group>
-    <match>413|Payload exceeds maximum</match>
+    <id>413</id>
+    <description>SSLE Microservice: Oversized payload rejected (HTTP 413)</description>
+    <group>payload_clamp</group>
+  </rule>
+
+  <!-- Rule 100108: Repeated HTTP 413 Oversized Payload Submissions (Active Response Quarantine) -->
+  <rule id="100108" level="10" frequency="3" timeframe="10">
+    <if_matched_sid>100107</if_matched_sid>
     <same_source_ip />
     <description>SSLE SIEM Alert: Repeated oversized payload submissions detected from same IP across microservice cluster</description>
     <mitre>

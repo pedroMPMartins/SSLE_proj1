@@ -34,27 +34,30 @@ incus exec "$TARGET_CONTAINER" -- bash -c "
     WAZUH_MANAGER='$WAZUH_MANAGER_IP' apt-get install -y wazuh-agent
 "
 
+SHORT_NAME="${TARGET_CONTAINER#ssle-}"
+LOG_PATH="/var/log/ssle/${SHORT_NAME}_access.log"
+
 # 3. Configure log collection in ossec.conf
-echo "==> Configuring <localfile> log collection for /var/log/ssle/ingestion_access.log..."
-incus exec "$TARGET_CONTAINER" -- python3 -c '
-conf_path = "/var/ossec/etc/ossec.conf"
-with open(conf_path, "r") as f:
+echo "==> Configuring <localfile> log collection for ${LOG_PATH}..."
+incus exec "$TARGET_CONTAINER" -- python3 -c "
+conf_path = '/var/ossec/etc/ossec.conf'
+with open(conf_path, 'r') as f:
     content = f.read()
 
-localfile_block = """
-  <!-- SSLE Ingestion Gateway Apache-Compatible Access Log Ingestion -->
+localfile_block = '''
+  <!-- SSLE ${TARGET_CONTAINER} Apache-Compatible Access Log Ingestion -->
   <localfile>
     <log_format>apache</log_format>
-    <location>/var/log/ssle/ingestion_access.log</location>
+    <location>${LOG_PATH}</location>
   </localfile>
-"""
+'''
 
-if "/var/log/ssle/ingestion_access.log" not in content:
-    if "</ossec_config>" in content:
-        content = content.replace("</ossec_config>", localfile_block + "\n</ossec_config>")
-        with open(conf_path, "w") as f:
+if '${LOG_PATH}' not in content:
+    if '</ossec_config>' in content:
+        content = content.replace('</ossec_config>', localfile_block + '\n</ossec_config>')
+        with open(conf_path, 'w') as f:
             f.write(content)
-'
+"
 
 # 4. Start Wazuh agent service
 echo "==> Starting wazuh-agent service..."
@@ -63,5 +66,5 @@ incus exec "$TARGET_CONTAINER" -- systemctl enable --now wazuh-agent
 
 echo "=========================================================="
 echo "  Wazuh Agent successfully installed and active on $TARGET_CONTAINER!"
-echo "  Logs monitored: /var/log/ssle/ingestion_access.log"
+echo "  Logs monitored: $LOG_PATH"
 echo "=========================================================="
