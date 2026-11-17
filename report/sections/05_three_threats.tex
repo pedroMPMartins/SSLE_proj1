@@ -115,8 +115,12 @@ When cryptographic verification fails:
     \item \textbf{Active Response:} Triggers immediate firewall isolation on the sender IP.
 \end{itemize}
 
-\paragraph{6. PoC Post-Mortem:}
+\paragraph{6. PoC Post-Mortem \& Practical Limitations:}
 Automated unit and live integration tests confirmed that single-byte payload tampering was rejected with \texttt{HTTP 401}, and stale telemetry packets ($>10\,\text{s}$) were discarded, ensuring absolute data integrity.
+
+However, an important engineering limitation of this replay prevention mechanism involves sensor clock drift. In distributed edge environments without reliable Network Time Protocol (NTP) synchronization or hardware Real-Time Clocks, a benign edge sensor may experience internal clock drift exceeding the 10-second tolerance window ($|T_{\text{server}} - T_s| > 10\,\text{s}$). In this scenario, the ingestion gateway treats valid readings as expired or replayed packets, rejecting the data with \texttt{HTTP 401} and triggering an automated firewall quarantine on a legitimate node. 
+
+I deliberately accepted this operational downside during architectural design. In high-integrity telemetry networks, failing closed to prevent replay exploitation and malicious state rollback outweighs the risk of temporary edge sensor desynchronization. In practice, this limitation is mitigated by provisioning periodic NTP synchronization hooks or adjusting the tolerance window based on edge hardware characteristics.
 
 % ==============================================================================
 \subsection{Threat Comparison Summary}
