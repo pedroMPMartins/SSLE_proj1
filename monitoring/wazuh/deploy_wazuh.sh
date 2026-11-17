@@ -62,11 +62,11 @@ if "alienvault_reputation" not in content:
 # 2. Insert Active Response inside <ossec_config> before closing tag
 if "100100" not in content:
     ar_block = """
-  <!-- SSLE Active Response for All Three Syllabus Threats -->
+  <!-- SSLE Active Response for Cluster-Wide Global SIEM Quarantine -->
   <active-response>
     <command>firewall-drop</command>
-    <location>local</location>
-    <rules_id>100100, 100101, 100102, 100104</rules_id>
+    <location>all</location>
+    <rules_id>100100, 100101, 100102, 100104, 100105, 100106</rules_id>
     <timeout>60</timeout>
   </active-response>
 """

@@ -970,7 +970,7 @@ func TestThreeThreatsTriadValidation(t *testing.T) {
 	}
 }
 
-// TestFCAPSEventCorrelationWorkflow tests the 5-stage Fault Management cycle (Slide 9)
+// TestFCAPSEventCorrelationWorkflow tests the 5-stage Fault Management cycle
 func TestFCAPSEventCorrelationWorkflow(t *testing.T) {
 	// 1. Stage 1: Detecting (Metric Threshold Anomaly Detection)
 	type MetricAnomaly struct {
@@ -1098,7 +1098,7 @@ func TestFCAPSEventCorrelationWorkflow(t *testing.T) {
 	}
 }
 
-// TestRegistryScalabilityAndLookupBounds tests quantitative scaling up to 1,000 services (Slides 4 & 7)
+// TestRegistryScalabilityAndLookupBounds tests quantitative scaling up to 1,000 services
 func TestRegistryScalabilityAndLookupBounds(t *testing.T) {
 	registry := make(map[string]models.Service)
 	var mu sync.RWMutex

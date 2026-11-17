@@ -16,7 +16,7 @@ According to the ISO/ITU-T network management model, **FCAPS** categorizes syste
 * **P**erformance Management
 * **S**ecurity Management
 
-In traditional enterprise deployments, **Fault Management** is isolated from **Security Management**. As explicitly highlighted in the course lecture slides (`guidelines_v0.pdf`, Slide 9):
+In traditional enterprise deployments, **Fault Management** is isolated from **Security Management**. As highlighted in the course lecture guidelines:
 > *"Fault Management within FCAPS does not deal with security events (i.e., at least explicit security events)."*
 
 When an operational degradation occurs (e.g., latency spikes, request queue exhaustion, or connection timeouts), traditional fault monitors observe symptoms but cannot determine whether the root cause is an operational hardware failure (bad disk, noisy neighbor) or an active cyber-attack (DDoS flood, exploit injection, MitM tampering).

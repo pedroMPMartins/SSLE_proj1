@@ -8,11 +8,9 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"path/filepath"
 	"simple_soa/internal/function"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -41,8 +39,7 @@ var (
 
 	// Access logging for Wazuh SIEM integration (Guide 4)
 	accessLogPath = getEnv("ACCESS_LOG_PATH", "/var/log/ssle/ingestion_access.log")
-	accessLogFile *os.File
-	accessLogMu   sync.Mutex
+	accessLogger  *function.AccessLogger
 )
 
 func getEnv(key, fallback string) string {
@@ -73,64 +70,6 @@ func parseFloatEnv(key string, fallback float64) float64 {
 		return fallback
 	}
 	return f
-}
-
-// initAccessLogger initializes the access log file with automatic directory creation and fallback
-func initAccessLogger() {
-	dir := filepath.Dir(accessLogPath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		// Fallback to local access.log if system directory (/var/log/ssle) is not writable
-		accessLogPath = "./ingestion_access.log"
-	}
-
-	f, err := os.OpenFile(accessLogPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-	if err != nil {
-		accessLogPath = "./ingestion_access.log"
-		f, err = os.OpenFile(accessLogPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-		if err != nil {
-			log.Printf("[Wazuh SIEM] Warning: Unable to open access log file: %v. Access logging to file disabled.\n", err)
-			return
-		}
-	}
-	accessLogFile = f
-	log.Printf("[Wazuh SIEM] Structured access logging initialized at: %s\n", accessLogPath)
-}
-
-// logAccess writes standard Apache Combined Log Format entries for Wazuh localfile ingestion
-func logAccess(clientIP string, method, uri, proto string, status, bytesSent int, userAgent string) {
-	if accessLogFile == nil {
-		return
-	}
-
-	// Apache Combined format: %h %l %u %t "%r" %>s %b "%{Referer}i" "%{User-Agent}i"
-	// Example: 192.168.1.100 - - [11/Nov/2026:14:30:00 +0000] "POST /ingest HTTP/1.1" 200 45 "-" "curl/7.68.0"
-	timeStr := time.Now().Format("02/Jan/2006:15:04:05 -0700")
-	line := fmt.Sprintf("%s - - [%s] \"%s %s %s\" %d %d \"-\" \"%s\"\n",
-		clientIP, timeStr, method, uri, proto, status, bytesSent, userAgent)
-
-	accessLogMu.Lock()
-	defer accessLogMu.Unlock()
-	accessLogFile.WriteString(line)
-}
-
-type statusRecorder struct {
-	http.ResponseWriter
-	status    int
-	bytesSent int
-}
-
-func (r *statusRecorder) WriteHeader(status int) {
-	r.status = status
-	r.ResponseWriter.WriteHeader(status)
-}
-
-func (r *statusRecorder) Write(b []byte) (int, error) {
-	if r.status == 0 {
-		r.status = http.StatusOK
-	}
-	n, err := r.ResponseWriter.Write(b)
-	r.bytesSent += n
-	return n, err
 }
 
 func extractClientIP(r *http.Request) string {
@@ -174,9 +113,9 @@ func main() {
 		registryURL = "http://localhost:5050"
 	}
 
-	initAccessLogger()
-	if accessLogFile != nil {
-		defer accessLogFile.Close()
+	accessLogger = function.NewAccessLogger("ingestion", accessLogPath)
+	if accessLogger != nil {
+		defer accessLogger.Close()
 	}
 
 	regEndpoint := registryURL
@@ -317,17 +256,7 @@ func main() {
 	protectedHandler := function.DoSProtectionMiddleware(mux, dosCfg)
 
 	// Wrap with access logging middleware for Wazuh SIEM
-	loggingHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		rec := &statusRecorder{ResponseWriter: w}
-		protectedHandler.ServeHTTP(rec, r)
-
-		clientIP := extractClientIP(r)
-		status := rec.status
-		if status == 0 {
-			status = http.StatusOK
-		}
-		logAccess(clientIP, r.Method, r.RequestURI, r.Proto, status, rec.bytesSent, r.UserAgent())
-	})
+	loggingHandler := function.AccessLoggingMiddleware(accessLogger, protectedHandler)
 
 	log.Printf("Ingestion service listening on :%s (ID: %s)\n", port, serviceID)
 	log.Printf("  Defenses: RateLimit=%v (RPS=%.1f) | InputValidation=%v (range=[%.1f, %.1f]) | ShellshockDefense=%v | Blocklist=%s\n",

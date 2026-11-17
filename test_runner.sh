@@ -235,6 +235,9 @@ log_info "Starting isolated test microservices on ports ${TEST_TEMP_PORT}-${TEST
 # 1. Registry (Isolated on :15050 with test admin token)
 PORT="${TEST_REGISTRY_PORT}" \
 ADMIN_TOKEN="${TEST_ADMIN_TOKEN}" \
+ACCESS_LOG_PATH="${TEST_TMP_DIR}/registry_access.log" \
+ENABLE_RATE_LIMIT="true" \
+RATE_LIMIT_RPS="30.0" \
 "${TEST_BIN_DIR}/registry" > "${TEST_TMP_DIR}/registry.log" 2>&1 &
 TEST_PIDS+=($!)
 
@@ -242,6 +245,9 @@ TEST_PIDS+=($!)
 PORT="${TEST_STORAGE_PORT}" \
 SERVICE_URL="${TEST_STORAGE_URL}" \
 REGISTRY_URL="${TEST_REGISTRY_URL}/register" \
+ACCESS_LOG_PATH="${TEST_TMP_DIR}/storage_access.log" \
+ENABLE_RATE_LIMIT="true" \
+RATE_LIMIT_RPS="30.0" \
 "${TEST_BIN_DIR}/storage" > "${TEST_TMP_DIR}/storage.log" 2>&1 &
 TEST_PIDS+=($!)
 
@@ -266,6 +272,9 @@ PORT="${TEST_ANALYTICS_PORT}" \
 SERVICE_URL="${TEST_ANALYTICS_URL}" \
 REGISTRY_URL="${TEST_REGISTRY_URL}" \
 DB_PATH="${TEST_DB_PATH}" \
+ACCESS_LOG_PATH="${TEST_TMP_DIR}/analytics_access.log" \
+ENABLE_RATE_LIMIT="true" \
+RATE_LIMIT_RPS="30.0" \
 "${TEST_BIN_DIR}/analytics" > "${TEST_TMP_DIR}/analytics.log" 2>&1 &
 TEST_PIDS+=($!)
 
@@ -839,9 +848,9 @@ fi
 
 
 # ------------------------------------------------------------------------------
-# Step 8: Quantitative Scalability & Performance Benchmarks (Slides 4 & 7)
+# Step 8: Quantitative Scalability & Performance Benchmarks
 # ------------------------------------------------------------------------------
-print_header "Step 8: Quantitative Scalability & Resource Optimization (Slides 4 & 7)"
+print_header "Step 8: Quantitative Scalability & Resource Optimization"
 
 log_info "Executing Go Algorithmic Micro-Benchmarks (Registry & HMAC)..."
 if go test -bench=Benchmark ./tests/... -benchmem -run=^$; then
@@ -857,7 +866,7 @@ SCALE_OUT="${TEST_TMP_DIR}/scalability_bench.log"
 if bash scripts/run_scalability_benchmark.sh "${TEST_REGISTRY_URL}" "${TEST_INGESTION_URL}" | tee "$SCALE_OUT"; then
     if grep -q "Quantitative Bandwidth Optimization Modeling" "$SCALE_OUT" && \
        grep -q "Analyzing Ingestion Gateway & Storage Scalability Limits" "$SCALE_OUT"; then
-        log_success "Scalability Benchmark: Verified Registry scale-up (N=10..500) and 99.99% Bandwidth Optimization (Slide 7 Bonus)."
+        log_success "Scalability Benchmark: Verified Registry scale-up (N=10..500) and 99.99% Bandwidth Optimization."
     else
         log_error "Scalability Benchmark output missing expected evaluation metrics!"
         OVERALL_SUCCESS=false

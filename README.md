@@ -69,7 +69,7 @@ This is the system developed for the first project of the SSLE course (Security 
   - **[scripts/generate_certs.sh](scripts/generate_certs.sh)**: certificate generation script for TLS and mTLS verification.
 
 - **docs**: technical documentation, threat modeling, and lab guide reports.
-  - **[docs/three_threats_evaluation.md](docs/three_threats_evaluation.md)**: comprehensive evaluation of the three chosen threats according to syllabus Slide 12 criteria.
+  - **[docs/three_threats_evaluation.md](docs/three_threats_evaluation.md)**: comprehensive evaluation of the three chosen threats according to syllabus criteria.
   - **[docs/attack_defense_tree.md](docs/attack_defense_tree.md)**: formal Attack-Defense Trees for the three syllabus threats.
   - **[docs/fcaps_fault_management.md](docs/fcaps_fault_management.md)**: 5-stage FCAPS fault management specifications and correlation matrices.
   - **[docs/scalability_evaluation.md](docs/scalability_evaluation.md)**: quantitative scalability models, Big-O analysis, and bandwidth savings proofs.
@@ -203,7 +203,7 @@ Runs the entire testing infrastructure across 8 sequential validation phases und
 
 ## The Three Syllabus Threats & Countermeasures
 
-The project implements and defends against the three formal threats chosen according to syllabus Slide 12 criteria:
+The project implements and defends against the three formal threats chosen according to syllabus criteria:
 
 | Threat | Syllabus Area | Primary Detection | Primary Defense | SIEM Rule & Active Response |
 | :--- | :--- | :--- | :--- | :--- |

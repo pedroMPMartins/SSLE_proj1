@@ -1,7 +1,7 @@
 # SSLE Project 1: Quantitative Scalability Evaluation & Bandwidth Optimization
 
 **Course:** Security in Large Scale Systems (SSLE) — University of Aveiro  
-**Evaluation Scope:** Project 1 — Scalability, Algorithmic Complexity, and Resource Optimization (Slides 4 & 7)  
+**Evaluation Scope:** Scalability, Algorithmic Complexity, and Resource Optimization  
 **Author:** Pedro (SSLE Student)  
 **Date:** November 2026  
 
@@ -9,13 +9,13 @@
 
 ## 1. Executive Summary & Evaluation Scope
 
-In large-scale distributed architectures, security mechanisms and service registries must scale gracefully without inducing excessive CPU saturation, memory bloating, or network bandwidth depletion. In accordance with the Project 1 Guidelines (`guidelines_v0.pdf`, Slides 4 & 7), this document presents a **quantitative scalability evaluation** of our Service-Oriented Architecture (SOA):
+In large-scale distributed architectures, security mechanisms and service registries must scale gracefully without inducing excessive CPU saturation, memory bloating, or network bandwidth depletion. In accordance with the project guidelines, this document presents a **quantitative scalability evaluation** of our Service-Oriented Architecture (SOA):
 
 1. **Service Registry Algorithmic Complexity & Scaling:** Time/memory complexity ($O(1)$ vs. $O(N)$) and empirical scale-up benchmarks ($N=10 \rightarrow 1,000$ services).
-2. **Bandwidth Optimization (Slide 7 Bonus):** Mathematical modeling and empirical proof of bandwidth savings achieved by `DiscoverLocally()` compared to naive global polling.
+2. **Bandwidth Optimization:** Mathematical modeling and empirical proof of bandwidth savings achieved by `DiscoverLocally()` compared to naive global polling.
 3. **Ingestion & Storage Throughput Limits:** Concurrency saturation curves and identification of the SQLite single-writer bottleneck.
 4. **Monitoring Telemetry Overhead:** Prometheus scrape scalability and hierarchical label cardinality.
-5. **Architectural Critique & Bridge to Project 2 (Slide 13):** Honest analysis of system boundaries and the motivation for Byzantine Fault Tolerant (BFT) replication.
+5. **Architectural Critique & Future Work:** Honest analysis of system boundaries and the motivation for Byzantine Fault Tolerant (BFT) replication.
 
 ```mermaid
 flowchart LR
@@ -173,9 +173,9 @@ service_response_time_seconds{service="ingestion",region="pt-aveiro",zone="lab-s
 
 ---
 
-## 6. Architectural Critique & Bridge to Project 2 (Slide 13)
+## 6. Architectural Critique & Future Work
 
-Slide 13 of the guidelines specifically states:
+The project guidelines state:
 > *"Describing why the solution is not perfect also earns points (i.e., this is knowledge). To make a bridge for future work."*
 
 ### Why the Current Solution is Not Perfect:
@@ -183,8 +183,8 @@ Slide 13 of the guidelines specifically states:
 2. **SQLite Write Serialization:** As proven in Section 4, single-node SQLite write serialization caps system ingestion at $\approx 425\text{ req/s}$.
 3. **No Byzantine Fault Tolerance (BFT):** While our system detects tampering (via HMAC) and blocks rogue unregistrations (via `X-Admin-Token`), it assumes the storage node itself is non-malicious (Crash Fault Tolerant, but not Byzantine Fault Tolerant).
 
-### Bridge to Project 2: Attack Tolerance Mechanisms
-In **Project 2**, we will address these exact scalability and resilience boundaries:
+### Future Work: Attack Tolerance Mechanisms
+In future work, we can address these exact scalability and resilience boundaries:
 * Transitioning from single-node SQLite storage to a **distributed, replicated state machine**.
 * Implementing **Byzantine Fault Tolerant (BFT) consensus algorithms** (e.g., PBFT or Raft with signed attestations).
 * Enabling horizontal write distribution across partitioned storage clusters, breaking the 425 req/s ceiling while surviving malicious or compromised storage nodes.

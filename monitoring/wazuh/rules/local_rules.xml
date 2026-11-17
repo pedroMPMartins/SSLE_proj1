@@ -63,4 +63,29 @@
     <group>mitm,tampering,integrity</group>
   </rule>
 
+  <!-- Rule 100105: Repeated HTTP 429 Rate Limit Exceeded across Any Microservice -->
+  <rule id="100105" level="10" frequency="5" timeframe="10">
+    <if_group>web|access_log</if_group>
+    <id>429</id>
+    <same_source_ip />
+    <description>SSLE SIEM Alert: Repeated rate-limit threshold violations (HTTP 429) detected from same IP across microservice cluster</description>
+    <mitre>
+      <id>T1498</id>
+      <id>T1499</id>
+    </mitre>
+    <group>dos,flood,ratelimit</group>
+  </rule>
+
+  <!-- Rule 100106: Repeated HTTP 413 / Oversized Payload Submissions across Any Microservice -->
+  <rule id="100106" level="10" frequency="3" timeframe="10">
+    <if_group>web|access_log</if_group>
+    <match>413|Payload exceeds maximum</match>
+    <same_source_ip />
+    <description>SSLE SIEM Alert: Repeated oversized payload submissions detected from same IP across microservice cluster</description>
+    <mitre>
+      <id>T1499</id>
+    </mitre>
+    <group>dos,payload_clamp,buffer_overflow</group>
+  </rule>
+
 </group>

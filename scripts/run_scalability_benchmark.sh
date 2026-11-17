@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# SSLE Project 1: Quantitative Scalability Benchmark Harness (Slides 4 & 7)
+# SSLE Project 1: Quantitative Scalability Benchmark Harness
 # Evaluates:
 #   1. Registry Scalability: Registration throughput & lookup latency (N=10..1000)
 #   2. Locality-Aware Discovery: Bandwidth optimization modeling (LAN vs. WAN)
@@ -95,7 +95,7 @@ echo ""
 # ------------------------------------------------------------------------------
 # 2. Bandwidth Optimization Modeling (Locality-Aware vs. Global Polling)
 # ------------------------------------------------------------------------------
-echo ">>> [2/3] Quantitative Bandwidth Optimization Modeling (Slide 7 Bonus)..."
+echo ">>> [2/3] Quantitative Bandwidth Optimization Modeling..."
 python3 - <<EOF
 # Modeling 500 Edge Sensors publishing 1 reading per second (payload ~128 bytes)
 sensors = 500
@@ -159,7 +159,7 @@ for c in concurrency_levels:
 
 print("")
 print("Architectural Finding: Single-node SQLite storage hits write saturation at ~425 req/s.")
-print("Bridge to Project 2: Demonstrates necessity of Distributed Byzantine Fault Tolerant (BFT) replication.")
+print("Future Work: Demonstrates necessity of Distributed Byzantine Fault Tolerant (BFT) replication.")
 EOF
 echo "================================================================================"
 echo "          Quantitative Scalability Evaluation Benchmark Complete!               "

@@ -201,6 +201,7 @@ log_banner "Step 5: Installing and Starting Systemd Service Units"
 
 # --- 1. Service Registry (:5050) ---
 log_info "Configuring systemd service for ssle-registry..."
+incus exec ssle-registry -- mkdir -p /var/log/ssle
 incus exec ssle-registry -- bash -c 'cat << "EOF" > /etc/systemd/system/ssle-registry.service
 [Unit]
 Description=SSLE Service Registry with Hierarchical Discovery & FQSN
@@ -210,6 +211,9 @@ After=network.target
 Type=simple
 Environment="PORT=5050"
 Environment="ADMIN_TOKEN=ssle-admin-secret-token-2026"
+Environment="ACCESS_LOG_PATH=/var/log/ssle/registry_access.log"
+Environment="ENABLE_RATE_LIMIT=true"
+Environment="RATE_LIMIT_RPS=30.0"
 Environment="REGION=pt-aveiro"
 Environment="ZONE=lab-ssle"
 Environment="PHYSICAL_HOST=vm-node-1"
@@ -227,6 +231,7 @@ systemctl enable --now ssle-registry
 
 # --- 2. Storage Service (:5002) ---
 log_info "Configuring systemd service for ssle-storage..."
+incus exec ssle-storage -- mkdir -p /var/log/ssle
 incus exec ssle-storage -- bash -c 'cat << "EOF" > /etc/systemd/system/ssle-storage.service
 [Unit]
 Description=SSLE SQLite Storage Service
@@ -239,6 +244,9 @@ Environment="PORT=5002"
 Environment="SERVICE_URL=http://ssle-storage.incus:5002"
 Environment="REGISTRY_URL=http://ssle-registry.incus:5050/register"
 Environment="DB_PATH=/data/temp_data.db"
+Environment="ACCESS_LOG_PATH=/var/log/ssle/storage_access.log"
+Environment="ENABLE_RATE_LIMIT=true"
+Environment="RATE_LIMIT_RPS=30.0"
 Environment="REGION=pt-aveiro"
 Environment="ZONE=lab-ssle"
 Environment="PHYSICAL_HOST=vm-node-1"
@@ -296,6 +304,7 @@ systemctl enable --now ssle-ingestion
 
 # --- 4. Analytics Service (:5003) ---
 log_info "Configuring systemd service for ssle-analytics..."
+incus exec ssle-analytics -- mkdir -p /var/log/ssle
 incus exec ssle-analytics -- bash -c 'cat << "EOF" > /etc/systemd/system/ssle-analytics.service
 [Unit]
 Description=SSLE Analytics Service
@@ -308,6 +317,9 @@ Environment="PORT=5003"
 Environment="SERVICE_URL=http://ssle-analytics.incus:5003"
 Environment="REGISTRY_URL=http://ssle-registry.incus:5050"
 Environment="DB_PATH=/data/temp_data.db"
+Environment="ACCESS_LOG_PATH=/var/log/ssle/analytics_access.log"
+Environment="ENABLE_RATE_LIMIT=true"
+Environment="RATE_LIMIT_RPS=30.0"
 Environment="REGION=pt-aveiro"
 Environment="ZONE=lab-ssle"
 Environment="PHYSICAL_HOST=vm-node-1"
@@ -518,48 +530,67 @@ with open(conf_path, "w") as f:
     log_success "Wazuh SIEM Manager deployed and active."
 
     # --------------------------------------------------------------------------
-    # Step 8: Deploy Wazuh Agent to Ingestion Gateway
+    # Step 8: Deploy Wazuh Agents & Kernel Firewall (iptables) across All Core Microservices
     # --------------------------------------------------------------------------
-    log_banner "Step 8: Deploying Wazuh Agent to Ingestion Gateway"
+    log_banner "Step 8: Deploying Wazuh Agents & Kernel Firewalls (iptables) across All Core Microservices"
     WAZUH_IP=$(incus list "$WAZUH_CONTAINER" --format csv -c 4 | awk '{print $1}')
     if [ -z "$WAZUH_IP" ]; then
         WAZUH_IP="wazuh-container.incus"
     fi
     log_info "Detected Wazuh Manager address: ${WAZUH_IP}"
 
-    log_info "Installing and configuring wazuh-agent inside ssle-ingestion..."
-    incus exec ssle-ingestion -- bash -c "
-        apt-get update && apt-get install -y curl apt-transport-https lsb-release gnupg2 iptables
-        curl -s https://packages.wazuh.com/key/GPG-KEY-WAZUH | gpg --no-default-keyring --keyring gnupg-ring:/usr/share/keyrings/wazuh.gpg --import && chmod 644 /usr/share/keyrings/wazuh.gpg
-        echo 'deb [signed-by=/usr/share/keyrings/wazuh.gpg] https://packages.wazuh.com/4.x/apt/ stable main' > /etc/apt/sources.list.d/wazuh.list
-        apt-get update
-        WAZUH_MANAGER='${WAZUH_IP}' apt-get install -y wazuh-agent
-    "
+    CORE_SERVICES=("ssle-ingestion" "ssle-registry" "ssle-storage" "ssle-analytics")
+    declare -A SERVICE_PORTS=(
+        ["ssle-ingestion"]="5001"
+        ["ssle-registry"]="5050"
+        ["ssle-storage"]="5002"
+        ["ssle-analytics"]="5003"
+    )
 
-    log_info "Configuring Apache access log ingestion in agent ossec.conf..."
-    incus exec ssle-ingestion -- python3 -c '
-conf_path = "/var/ossec/etc/ossec.conf"
-with open(conf_path, "r") as f:
+    for svc in "${CORE_SERVICES[@]}"; do
+        short_name="${svc#ssle-}"
+        svc_port="${SERVICE_PORTS[$svc]}"
+        log_info "Hardening container '${svc}' (iptables firewall + wazuh-agent + ${short_name}_access.log)..."
+
+        incus exec "$svc" -- bash -c "
+            mkdir -p /var/log/ssle
+            apt-get update && apt-get install -y curl apt-transport-https lsb-release gnupg2 iptables
+            curl -s https://packages.wazuh.com/key/GPG-KEY-WAZUH | gpg --no-default-keyring --keyring gnupg-ring:/usr/share/keyrings/wazuh.gpg --import && chmod 644 /usr/share/keyrings/wazuh.gpg
+            echo 'deb [signed-by=/usr/share/keyrings/wazuh.gpg] https://packages.wazuh.com/4.x/apt/ stable main' > /etc/apt/sources.list.d/wazuh.list
+            apt-get update
+            WAZUH_MANAGER='${WAZUH_IP}' apt-get install -y wazuh-agent
+
+            # Baseline iptables firewall protection: allow loopback, established, and service port
+            iptables -C INPUT -i lo -j ACCEPT 2>/dev/null || iptables -A INPUT -i lo -j ACCEPT
+            iptables -C INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT 2>/dev/null || iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+            iptables -C INPUT -p tcp --dport ${svc_port} -j ACCEPT 2>/dev/null || iptables -A INPUT -p tcp --dport ${svc_port} -j ACCEPT
+        "
+
+        log_info "Configuring Apache access log ingestion for ${svc} in ossec.conf..."
+        incus exec "$svc" -- python3 -c "
+conf_path = '/var/ossec/etc/ossec.conf'
+with open(conf_path, 'r') as f:
     content = f.read()
 
-localfile_block = """
-  <!-- SSLE Ingestion Gateway Apache-Compatible Access Log Ingestion -->
+localfile_block = '''
+  <!-- SSLE ${svc} Apache-Compatible Access Log Ingestion -->
   <localfile>
     <log_format>apache</log_format>
-    <location>/var/log/ssle/ingestion_access.log</location>
+    <location>/var/log/ssle/${short_name}_access.log</location>
   </localfile>
-"""
+'''
 
-if "/var/log/ssle/ingestion_access.log" not in content:
-    if "</ossec_config>" in content:
-        content = content.replace("</ossec_config>", localfile_block + "\n</ossec_config>")
-        with open(conf_path, "w") as f:
+if '/var/log/ssle/${short_name}_access.log' not in content:
+    if '</ossec_config>' in content:
+        content = content.replace('</ossec_config>', localfile_block + '\n</ossec_config>')
+        with open(conf_path, 'w') as f:
             f.write(content)
-'
+"
 
-    incus exec ssle-ingestion -- systemctl daemon-reload
-    incus exec ssle-ingestion -- systemctl enable --now wazuh-agent
-    log_success "Wazuh Agent installed on ssle-ingestion and forwarding logs to Wazuh Manager."
+        incus exec "$svc" -- systemctl daemon-reload
+        incus exec "$svc" -- systemctl enable --now wazuh-agent
+        log_success "Wazuh Agent & iptables firewall active on '${svc}' forwarding /var/log/ssle/${short_name}_access.log."
+    done
 else
     log_warn "Skipping Wazuh SIEM deployment (--skip-wazuh set)."
 fi

@@ -41,6 +41,9 @@ DIAG_EXP_URL="http://127.0.0.1:${PORT_DIAG_EXP}"
 
 DEMO_DIR="/tmp/ssle_live_demo"
 ACCESS_LOG_PATH="${DEMO_DIR}/ingestion_access.log"
+REGISTRY_ACCESS_LOG_PATH="${DEMO_DIR}/registry_access.log"
+STORAGE_ACCESS_LOG_PATH="${DEMO_DIR}/storage_access.log"
+ANALYTICS_ACCESS_LOG_PATH="${DEMO_DIR}/analytics_access.log"
 DB_PATH="${DEMO_DIR}/temp_data.db"
 HMAC_SECRET="ssle-demo-shared-secret-key-32b"
 ADMIN_TOKEN="ssle-admin-secret-token-2026"
@@ -197,20 +200,26 @@ log_success "All binaries compiled and ready for execution."
 # ------------------------------------------------------------------------------
 print_stage "1/9" "Provisioning Entire Infrastructure & Security Layers"
 
-log_info "Starting [1/7] Service Registry on :${PORT_REGISTRY} (Token Protected)..."
+log_info "Starting [1/7] Service Registry on :${PORT_REGISTRY} (Token Protected & SIEM Monitored)..."
 PORT="${PORT_REGISTRY}" \
 ADMIN_TOKEN="${ADMIN_TOKEN}" \
+ACCESS_LOG_PATH="${REGISTRY_ACCESS_LOG_PATH}" \
+ENABLE_RATE_LIMIT="true" \
+RATE_LIMIT_RPS="30.0" \
 ./bin/registry > "${DEMO_DIR}/registry.log" 2>&1 &
 REG_PID=$!
 TRACKED_PIDS+=($REG_PID)
 
 sleep 0.5
 
-log_info "Starting [2/7] Storage Service on :${PORT_STORAGE} (SQLite Backend)..."
+log_info "Starting [2/7] Storage Service on :${PORT_STORAGE} (SQLite Backend & SIEM Monitored)..."
 PORT="${PORT_STORAGE}" \
 SERVICE_URL="${STORAGE_URL}" \
 REGISTRY_URL="${REGISTRY_URL}/register" \
 DB_PATH="${DB_PATH}" \
+ACCESS_LOG_PATH="${STORAGE_ACCESS_LOG_PATH}" \
+ENABLE_RATE_LIMIT="true" \
+RATE_LIMIT_RPS="30.0" \
 ./bin/storage > "${DEMO_DIR}/storage.log" 2>&1 &
 STORE_PID=$!
 TRACKED_PIDS+=($STORE_PID)
@@ -239,11 +248,14 @@ TRACKED_PIDS+=($INGEST_PID)
 
 sleep 0.5
 
-log_info "Starting [4/7] Analytics Service on :${PORT_ANALYTICS} (Math Computation)..."
+log_info "Starting [4/7] Analytics Service on :${PORT_ANALYTICS} (Math Computation & SIEM Monitored)..."
 PORT="${PORT_ANALYTICS}" \
 SERVICE_URL="${ANALYTICS_URL}" \
 REGISTRY_URL="${REGISTRY_URL}" \
 DB_PATH="${DB_PATH}" \
+ACCESS_LOG_PATH="${ANALYTICS_ACCESS_LOG_PATH}" \
+ENABLE_RATE_LIMIT="true" \
+RATE_LIMIT_RPS="30.0" \
 ./bin/analytics > "${DEMO_DIR}/analytics.log" 2>&1 &
 ANALYTICS_PID=$!
 TRACKED_PIDS+=($ANALYTICS_PID)
@@ -522,7 +534,7 @@ python3 ./scripts/fcaps_event_correlator.py \
 # ------------------------------------------------------------------------------
 # STAGE 9: Quantitative Scalability & Bandwidth Optimization
 # ------------------------------------------------------------------------------
-print_stage "9/9" "Quantitative Scalability & Bandwidth Optimization (Slides 4 & 7)"
+print_stage "9/9" "Quantitative Scalability & Bandwidth Optimization"
 
 log_info "Executing scalability benchmark suite (N=10..500) and bandwidth model..."
 bash ./scripts/run_scalability_benchmark.sh "${REGISTRY_URL}" "${INGESTION_URL}"

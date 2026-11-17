@@ -127,10 +127,15 @@ func main() {
 	dosCfg := function.LoadDoSConfigFromEnv()
 	protectedHandler := function.DoSProtectionMiddleware(mux, dosCfg)
 
+	// Wrap with structured access logging for Wazuh SIEM
+	accessLogger := function.NewAccessLogger("storage", "")
+	defer accessLogger.Close()
+	loggingHandler := function.AccessLoggingMiddleware(accessLogger, protectedHandler)
+
 	log.Printf("Storage service listening on :%s (ID: %s, DoS Defense: RateLimit=%v [RPS=%.1f], MaxBodyBytes=%d)\n",
 		port, serviceID, dosCfg.EnableRateLimit, dosCfg.RateLimitRPS, dosCfg.MaxBodyBytes)
 
-	server := function.NewHardenedServer(":"+port, protectedHandler)
+	server := function.NewHardenedServer(":"+port, loggingHandler)
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("Server failed: %v", err)
 	}

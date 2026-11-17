@@ -9,7 +9,7 @@
 
 ## 1. Executive Summary & Selection of the Three Syllabus Threats
 
-In accordance with the SSLE Project 1 Guidelines (`guidelines_v0.pdf`, Slides 4, 6, 10 & 12), this document formalizes the selection, implementation, detection, mitigation, and post-mortem evaluation of **three threats** from the course syllabus:
+In accordance with the SSLE Project 1 Guidelines, this document formalizes the selection, implementation, detection, mitigation, and post-mortem evaluation of **three threats** from the course syllabus:
 
 ```mermaid
 flowchart TD

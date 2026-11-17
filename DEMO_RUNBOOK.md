@@ -1,7 +1,7 @@
 # SSLE Project 1: Comprehensive Live Demonstration Runbook (`DEMO_RUNBOOK.md`)
 
 **Course:** Security in Large Scale Systems (SSLE) — University of Aveiro  
-**Evaluation Scope:** Project 1 In-Class Live Evaluation & Demonstration (Slide 14)  
+**Evaluation Scope:** Project 1 In-Class Live Evaluation & Demonstration  
 **Author:** Pedro (SSLE Student)  
 **Environment:** Linux Incus Containers (Debian/Ubuntu), Kali VM, or Localhost  
 
@@ -286,7 +286,7 @@ The guidelines require implementing the 5-stage FCAPS cycle and bridging operati
 
 ## 8. Demonstrating Gap 7: Quantitative Scalability & Resource Optimization
 
-Demonstrate system scalability and the Slide 7 bandwidth optimization bonus:
+Demonstrate system scalability and the bandwidth optimization bonus:
 
 ```bash
 ./scripts/run_scalability_benchmark.sh http://localhost:5050 http://localhost:5001
@@ -294,8 +294,8 @@ Demonstrate system scalability and the Slide 7 bandwidth optimization bonus:
 
 *What Proves It Works:*
 1. **Registry Scale-Up Table:** Shows registration throughput ($> 1,500\text{ ops/s}$) and sub-millisecond lookup latency ($p50 \approx 0.46\text{ ms}$) across 500+ services.
-2. **Bandwidth Optimization Model (Slide 7 Bonus):** Mathematically proves **99.99% WAN bandwidth reduction** ($18.51\text{ Mbps} \rightarrow 0.0002\text{ Mbps}$) by routing telemetry locally via `DiscoverLocally()`.
-3. **Storage Concurrency Curve:** Identifies the single-node SQLite write saturation ceiling ($\approx 425\text{ req/s}$), providing the direct academic bridge to Project 2's Byzantine Fault Tolerant distributed replication.
+2. **Bandwidth Optimization Model:** Mathematically proves **99.99% WAN bandwidth reduction** ($18.51\text{ Mbps} \rightarrow 0.0002\text{ Mbps}$) by routing telemetry locally via `DiscoverLocally()`.
+3. **Storage Concurrency Curve:** Identifies the single-node SQLite write saturation ceiling ($\approx 425\text{ req/s}$), providing the direct academic motivation for future work on Byzantine Fault Tolerant distributed replication.
 
 ---
 

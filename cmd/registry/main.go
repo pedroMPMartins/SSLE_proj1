@@ -253,10 +253,15 @@ func main() {
 	dosCfg := function.LoadDoSConfigFromEnv()
 	protectedHandler := function.DoSProtectionMiddleware(mux, dosCfg)
 
+	// Wrap with structured access logging for Wazuh SIEM
+	accessLogger := function.NewAccessLogger("registry", "")
+	defer accessLogger.Close()
+	loggingHandler := function.AccessLoggingMiddleware(accessLogger, protectedHandler)
+
 	log.Printf("Hierarchical Service Registry listening on :%s (DoS Defense: RateLimit=%v [RPS=%.1f], MaxBodyBytes=%d)\n",
 		port, dosCfg.EnableRateLimit, dosCfg.RateLimitRPS, dosCfg.MaxBodyBytes)
 
-	server := function.NewHardenedServer(":"+port, protectedHandler)
+	server := function.NewHardenedServer(":"+port, loggingHandler)
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("Registry server failed: %v", err)
 	}
