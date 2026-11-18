@@ -57,23 +57,27 @@ I developed a multi-threaded stress harness (\texttt{cmd/attacker}) capable of f
 \end{lstlisting}
 
 \paragraph{4. Monitoring \& Mitigation Actions:}
-I engineered multi-layered target hardening inside the Go Ingestion Gateway:
+I engineered a multi-tier target hardening architecture spanning application middleware, distributed access logging, and host packet filtering across all microservices:
 \begin{itemize}
-    \item \textbf{Token-Bucket Rate Limiter:} Implements an in-memory token-bucket algorithm per client IP allowing a sustained rate of $r = 15.0\,\text{req/s}$ with a maximum burst capacity of $b = 15$ tokens. When tokens are exhausted, excess requests are rejected with \texttt{HTTP 429 Too Many Requests}.
-    \item \textbf{Payload Clamping:} Wrapping request body readers with \texttt{http.MaxBytesReader(w, r.Body, 1048576)} enforces a hard $1\,\text{MB}$ boundary, rejecting bloated payloads with \texttt{HTTP 400 Bad Request}.
+    \item \textbf{Tier 1 Universal Token-Bucket Rate Limiter:} Implemented as reusable Go HTTP middleware (\texttt{DoSProtectionMiddleware}) deployed across every microservice in the cluster. It maintains an in-memory token-bucket per client IP, configured for $r = 5.0\,\text{req/s}$ sustained with $b = 15$ burst capacity on the external Ingestion perimeter, and $r = 30.0\,\text{req/s}$ for internal services (Registry, Storage, and Analytics). When an IP exhausts its available tokens, excess requests are rejected with \texttt{HTTP 429 Too Many Requests}.
+    \item \textbf{Strict Request Body Clamping:} Wrapping inbound request body readers with the standard helper \texttt{http.MaxBytesReader} enforces a hard $1\,\text{MB}$ boundary, immediately aborting oversized submissions with \texttt{HTTP 413 Payload Too Large} before buffers can saturate memory.
+    \item \textbf{Universal Defense-in-Depth:} Because internal microservices are also vulnerable to lateral flood attacks from compromised nodes, the identical DoS protection middleware and baseline \texttt{iptables} rules protect the Service Registry, Storage Service, and Analytics Worker, guaranteeing zero-trust resilience cluster-wide.
     \item \textbf{Diagnostics Exporter Instrumentation:} The Diagnostics Exporter (\texttt{:8001}) instruments real-time requests-per-second (\texttt{service\_requests\_per\_second}) and CPU utilization percent (\texttt{service\_cpu\_percent}).
 \end{itemize}
 
 \paragraph{5. Action-Responses Adopted (Wazuh SIEM):}
-When high-rate floods exceed 20 requests within 5 seconds from the same source IP:
+All core microservices continuously output structured Apache Combined access logs to \texttt{/var/log/ssle/}\allowbreak\texttt{<service>\_access.log}, monitored by local \texttt{wazuh-agent} daemons. Wazuh Manager correlates these distributed logs using an escalation hierarchy:
 \begin{itemize}
-    \item \textbf{Wazuh Rule 100102 (Level 8):} Detects frequency surges via rule tags\\
-    \texttt{<if\_matched\_group>web</if\_matched\_group>} and \texttt{<same\_source\_ip />}.
-    \item \textbf{Active Response:} Triggers \texttt{firewall-drop} on the flooding botnet IP, restoring gateway throughput for legitimate clients.
+    \item \textbf{Wazuh Rule 100105 (Level 4):} Base rule logging individual \texttt{HTTP 429} rate-limit events across any microservice.
+    \item \textbf{Wazuh Rule 100106 (Level 10):} Composite rule detecting repeated rate-limit violations, triggering when Rule 100105 matches 5 times within 10 seconds from the same source IP via \texttt{<if\_matched\_sid>100105</if\_matched\_sid>} and \texttt{<same\_source\_ip />}.
+    \item \textbf{Wazuh Rule 100107 (Level 4):} Base rule logging individual \texttt{HTTP 413} oversized payload rejections.
+    \item \textbf{Wazuh Rule 100108 (Level 10):} Composite rule detecting repeated oversized submissions, triggering when Rule 100107 matches 3 times within 10 seconds from the same source IP via \texttt{<if\_matched\_sid>100107</if\_matched\_sid>} and \texttt{<same\_source\_ip />}.
+    \item \textbf{Wazuh Rule 100102 (Level 8):} Detects volumetric request surges exceeding 20 requests within 5 seconds from identical source IPs via the rule filter tag\\ \texttt{<if\_matched\_group>web</if\_matched\_group>}.
+    \item \textbf{Tier 2 Cluster-Wide Active Response:} Wazuh Active Response is configured with \texttt{<location>all</location>} targeting rules 100100, 100101, 100102, 100104, 100106, and 100108. When an offending IP triggers any of these rules, the manager broadcasts a \texttt{firewall-drop} command to all connected microservice agents simultaneously, executing \texttt{iptables -I INPUT -s <IP> -j DROP} across every container to achieve global cluster isolation.
 \end{itemize}
 
 \paragraph{6. PoC Post-Mortem:}
-Under a 20-request burst, the gateway successfully throttled 19 out of 20 flood requests with \texttt{HTTP 429}, and rejected a $2\,\text{MB}$ payload with \texttt{HTTP 400}. PromQL alerts detected the traffic surge within 5 seconds, triggering automated IP quarantine.
+Under a high-frequency burst, the application layer throttled flood requests with \texttt{HTTP 429}, and oversized payloads ($>1\,\text{MB}$) were rejected with \texttt{HTTP 413}. When an attacker repeatedly breached these boundaries, Wazuh composite rules 100106 and 100108 triggered automated Active Response, dropping the adversary IP at the Linux kernel packet filtering level across all microservices simultaneously.
 
 % ==============================================================================
 \subsection{Threat 3: Route \& Signals Hijacking / Man-in-the-Middle (MitM)}
@@ -135,9 +139,9 @@ I deliberately accepted this operational downside during architectural design. I
 \toprule
 \textbf{Threat Vector} & \textbf{Vulnerability Target} & \textbf{Detection Mechanism} & \textbf{SIEM Rule} & \textbf{Active Response} \\
 \midrule
-\textbf{1. Shellshock RCE} & Ingestion Header Parser & Regex Header Filter \& Apache Access Log & Rule 100100 / 100101 & \texttt{firewall-drop} (60s) \\
-\textbf{2. Botnet DDoS} & Ingestion Gateway Sockets & Token Bucket ($15\,\text{rps}$) \& PromQL Traffic Alert & Rule 100102 & \texttt{firewall-drop} (60s) \\
-\textbf{3. MitM Tampering} & In-Flight Telemetry Stream & HMAC-SHA256 \& Replay Window Drift ($10\,\text{s}$) & Rule 100104 & \texttt{firewall-drop} (60s) \\
+\textbf{1. Shellshock RCE} & Ingestion Header Parser & Regex Header Filter \& Apache Access Log & Rule 100100 / 100101 & Cluster \texttt{firewall-drop} (60s) \\
+\textbf{2. Botnet DDoS} & Microservice Sockets \& Pools & Token Bucket ($15\,\text{rps}$), Body Clamp ($1\,\text{MB}$) \& PromQL & Rule 100102 / 100106 / 100108 & Cluster \texttt{firewall-drop} (60s) \\
+\textbf{3. MitM Tampering} & In-Flight Telemetry Stream & HMAC-SHA256 \& Replay Window Drift ($10\,\text{s}$) & Rule 100104 & Cluster \texttt{firewall-drop} (60s) \\
 \bottomrule
 \end{tabularx}
 \end{table}

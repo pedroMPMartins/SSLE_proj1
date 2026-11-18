@@ -71,7 +71,7 @@ To ground the security analysis in measurable metrics, \cref{tab:threat_metrics}
 \textbf{Threat Vector} & \textbf{Skill} & \textbf{Attacker Cost} & \textbf{Likelihood} & \textbf{Impact} & \textbf{Deployed Countermeasure} \\
 \midrule
 \textbf{T1: Shellshock RCE} & Low & Low & High & Critical & Input filter rejects \texttt{() \{ :;\}} with 403, and Wazuh Rule 100100 drops IP for 60s. \\
-\textbf{T2: Volumetric DoS} & Low & Medium & High & High & Token-bucket ($15\,\text{rps}$) throttles with 429, and payload is clamped at $1\,\text{MB}$ (400). \\
+\textbf{T2: Volumetric DoS} & Low & Medium & High & High & Token-bucket throttles with 429, payload clamped at $1\,\text{MB}$ (413), and Wazuh drops IP cluster-wide. \\
 \textbf{T3: MitM Tampering} & Medium & Medium & Medium & High & HMAC-SHA256 rejects modified bytes with 401, and timestamp window rejects replays ($>10\,\text{s}$). \\
 \textbf{T4: Registry Hijacking} & Low & Low & Medium & Critical & Admin Token authentication enforces 403 on unauthorized service deletions. \\
 \bottomrule
