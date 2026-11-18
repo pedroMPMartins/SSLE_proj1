@@ -25,6 +25,9 @@ To satisfy the scalability, observability, and threat-resilience mandates of Pro
 % Registry centered above the pipeline
 \node[service, minimum width=4.5cm] (registry) at (7.5, 5.2) {Service Registry (\texttt{:5050})\\{\scriptsize\normalfont Token Auth $\cdot$ Rate Limit $\cdot$ Agent}};
 
+% Cluster Label Badge in the open top-right quadrant
+\node[draw=blue!60!black, fill=blue!10, rounded corners=4pt, dashed, align=center, font=\scriptsize\bfseries\color{blue!90!black}, inner sep=5pt] (cluster_label) at (13.5, 5.2) {Incus Zero-Trust Cluster\\{\normalfont\tiny(wazuh-agent + iptables on each node)}};
+
 % Core Pipeline Row (x = 1.5, 7.5, 13.5 -> 6.0cm generous spacing)
 \node[service] (ingest) at (1.5, 2.2) {Ingestion Gateway (\texttt{:5001})\\{\scriptsize\normalfont DoS Shield $\cdot$ Wazuh Agent}};
 
@@ -32,12 +35,11 @@ To satisfy the scalability, observability, and threat-resilience mandates of Pro
 
 \node[service] (analytics) at (13.5, 2.2) {Analytics Worker (\texttt{:5003})\\{\scriptsize\normalfont Math Stats $\cdot$ Wazuh Agent}};
 
-% Cluster Boundary box around Registry + Pipeline
+% Cluster Boundary box around Registry + Pipeline + Cluster Label
 \begin{scope}[on background layer]
 \node[draw=blue!50!black, dashed, fill=blue!2, rounded corners=8pt,
-      fit=(registry) (ingest) (storage) (analytics),
-      inner sep=14pt,
-      label={[anchor=north east, font=\scriptsize\bfseries\color{blue!80!black}, xshift=-12pt, yshift=-4pt]above right:Incus Zero-Trust Microservice Cluster (wazuh-agent + iptables on each node)}] (cluster) {};
+      fit=(registry) (cluster_label) (ingest) (storage) (analytics),
+      inner sep=14pt] (cluster) {};
 \end{scope}
 
 % ==================== LOWER: Security & Exporters ====================
