@@ -6,12 +6,12 @@ To satisfy the scalability, observability, and threat-resilience mandates of Pro
 \begin{figure}[H]
 \centering
 \begin{tikzpicture}[
-    scale=0.80, transform shape,
-    service/.style={rectangle, draw=blue!70!black, fill=blue!8, rounded corners, thick, minimum width=2.6cm, minimum height=1.1cm, align=center, font=\footnotesize\bfseries},
-    edge_node/.style={rectangle, draw=purple!70!black, fill=purple!8, rounded corners, thick, minimum width=2.4cm, minimum height=1.1cm, align=center, font=\footnotesize\bfseries},
-    storage/.style={cylinder, shape border rotate=90, draw=orange!80!black, fill=orange!12, aspect=0.25, thick, minimum width=2.4cm, minimum height=1.2cm, align=center, font=\footnotesize\bfseries},
-    security/.style={rectangle, draw=red!70!black, fill=red!8, rounded corners, thick, minimum width=3.0cm, minimum height=1.1cm, align=center, font=\footnotesize\bfseries},
-    monitor/.style={rectangle, draw=green!60!black, fill=green!8, rounded corners, thick, minimum width=2.8cm, minimum height=1.1cm, align=center, font=\footnotesize\bfseries},
+    scale=0.76, transform shape,
+    service/.style={rectangle, draw=blue!70!black, fill=blue!8, rounded corners, thick, minimum width=2.7cm, minimum height=1.1cm, align=center, font=\footnotesize\bfseries},
+    edge_node/.style={rectangle, draw=purple!70!black, fill=purple!8, rounded corners, thick, minimum width=2.5cm, minimum height=1.1cm, align=center, font=\footnotesize\bfseries},
+    storage/.style={cylinder, shape border rotate=90, draw=orange!80!black, fill=orange!12, aspect=0.25, thick, minimum width=2.5cm, minimum height=1.2cm, align=center, font=\footnotesize\bfseries},
+    security/.style={rectangle, draw=red!70!black, fill=red!8, rounded corners, thick, minimum width=3.3cm, minimum height=1.1cm, align=center, font=\footnotesize\bfseries},
+    monitor/.style={rectangle, draw=green!60!black, fill=green!8, rounded corners, thick, minimum width=2.9cm, minimum height=1.1cm, align=center, font=\footnotesize\bfseries},
     edge/.style={-Latex, thick, draw=black!75},
     secedge/.style={-Latex, dashed, thick, draw=red!70!black},
     regedge/.style={-Latex, dashed, thick, draw=blue!70!black},
@@ -19,54 +19,53 @@ To satisfy the scalability, observability, and threat-resilience mandates of Pro
 ]
 
 % ==================== ROW 1 (TOP): Service Discovery ====================
-\node[service, minimum width=4.0cm] (registry) at (5.7, 2.5) {Service Registry (\texttt{:5050})\\{\scriptsize\normalfont Token Auth $\cdot$ Rate Limit $\cdot$ Agent}};
+\node[service, minimum width=4.2cm] (registry) at (7.2, 2.7) {Service Registry (\texttt{:5050})\\{\scriptsize\normalfont Token Auth $\cdot$ Rate Limit $\cdot$ Agent}};
 
 % ==================== ROW 2 (MIDDLE): Data Pipeline ====================
-\node[edge_node] (sensor) at (0.0, 0.0) {Edge Sensor (\texttt{:5000})\\{\scriptsize\normalfont IoT Telemetry $\cdot$ HMAC Sign}};
+\node[edge_node] (sensor) at (0.6, 0.0) {Edge Sensor (\texttt{:5000})\\{\scriptsize\normalfont IoT Telemetry $\cdot$ HMAC}};
 
-\node[service] (ingest) at (3.8, 0.0) {Ingestion Gateway (\texttt{:5001})\\{\scriptsize\normalfont DoS Shield $\cdot$ Access Log $\cdot$ Agent}};
+\node[service] (ingest) at (5.0, 0.0) {Ingestion Gateway (\texttt{:5001})\\{\scriptsize\normalfont DoS Shield $\cdot$ Wazuh Agent}};
 
-\node[storage] (storage) at (7.6, 0.0) {Storage Service (\texttt{:5002})\\{\scriptsize\normalfont SQLite WAL $\cdot$ Access Log $\cdot$ Agent}};
+\node[storage] (storage) at (9.4, 0.0) {Storage Service (\texttt{:5002})\\{\scriptsize\normalfont SQLite WAL $\cdot$ Wazuh Agent}};
 
-\node[service] (analytics) at (11.4, 0.0) {Analytics Worker (\texttt{:5003})\\{\scriptsize\normalfont Math Stats $\cdot$ Access Log $\cdot$ Agent}};
+\node[service] (analytics) at (13.8, 0.0) {Analytics Worker (\texttt{:5003})\\{\scriptsize\normalfont Math Stats $\cdot$ Wazuh Agent}};
 
 % ==================== CLUSTER BOUNDARY (Incus Containers) ====================
 \begin{scope}[on background layer]
 \node[draw=blue!50!black, dashed, fill=blue!2, rounded corners=8pt,
       fit=(registry) (ingest) (storage) (analytics),
       inner sep=10pt,
-      label={[anchor=north west, font=\scriptsize\bfseries\color{blue!80!black}, xshift=6pt, yshift=-3pt]above left:Incus Zero-Trust Microservice Cluster (wazuh-agent + iptables on each node)}] (cluster) {};
+      label={[anchor=north west, font=\scriptsize\bfseries\color{blue!80!black}, xshift=8pt, yshift=-3pt]above left:Incus Zero-Trust Microservice Cluster (wazuh-agent + iptables on each node)}] (cluster) {};
 \end{scope}
 
 % ==================== ROW 3 (BOTTOM): Exporters & SIEM ====================
-\node[security] (wazuh) at (1.6, -3.0) {Wazuh SIEM Manager (\texttt{:1514})\\{\scriptsize\normalfont Rules Engine $\cdot$ Active Response}};
+\node[security] (wazuh) at (2.4, -3.0) {Wazuh SIEM Manager (\texttt{:1514})\\{\scriptsize\normalfont Rules Engine $\cdot$ Active Response}};
 
-\node[monitor] (diag) at (5.7, -3.0) {Diagnostics Exporter (\texttt{:8001})\\{\scriptsize\normalfont RPS, CPU, Error Metrics}};
+\node[monitor] (diag) at (7.8, -3.0) {Diagnostics Exporter (\texttt{:8001})\\{\scriptsize\normalfont RPS, CPU, Error Metrics}};
 
-\node[monitor] (health) at (9.8, -3.0) {Health Exporter (\texttt{:8000})\\{\scriptsize\normalfont Periodic Liveness Poller}};
+\node[monitor] (health) at (12.4, -3.0) {Health Exporter (\texttt{:8000})\\{\scriptsize\normalfont Periodic Liveness Poller}};
 
 % ==================== ROW 4: Prometheus ====================
-\node[monitor, minimum width=4.0cm] (prom) at (7.7, -4.9) {Prometheus Server (\texttt{:9090})\\{\scriptsize\normalfont TSDB Time-Series $\cdot$ PromQL Alerts}};
+\node[monitor, minimum width=4.2cm] (prom) at (10.1, -4.9) {Prometheus Server (\texttt{:9090})\\{\scriptsize\normalfont TSDB Time-Series $\cdot$ PromQL Alerts}};
 
 % ----------------- Connections: Data Flow -----------------
-\draw[edge] (sensor) -- node[above=1pt, font=\tiny] {HMAC Sign} node[below=1pt, font=\tiny] {\texttt{POST /ingest}} (ingest);
-\draw[edge] (ingest) -- node[above=1pt, font=\tiny] {\texttt{POST /store}} (storage);
-\draw[edge] (storage) -- node[above=1pt, font=\tiny] {Read SQLite} (analytics);
+\draw[edge] (sensor) -- node[above=2pt, font=\tiny] {\texttt{POST /ingest} (Signed)} (ingest);
+\draw[edge] (ingest) -- node[above=2pt, font=\tiny] {\texttt{POST /store}} (storage);
+\draw[edge] (storage) -- node[above=2pt, font=\tiny] {\texttt{Read SQLite}} (analytics);
 
 % ----------------- Connections: Registry Discovery -----------------
 \draw[regedge] (sensor.north) |- node[near start, left=2pt, font=\tiny] {Heartbeat} (registry.west);
-\draw[regedge] (ingest.north) -- node[left=2pt, font=\tiny] {Resolve Storage} (registry.215);
-\draw[regedge] (storage.north) -- node[right=2pt, font=\tiny] {Register} (registry.325);
+\draw[regedge] (ingest.north) -- node[left=2pt, font=\tiny] {Resolve Storage} (registry.220);
+\draw[regedge] (storage.north) -- node[right=2pt, font=\tiny] {Register} (registry.320);
 \draw[regedge] (analytics.north) |- node[near start, right=2pt, font=\tiny] {Register} (registry.east);
 
 % ----------------- Connections: Wazuh SIEM -----------------
-\draw[secedge] (cluster.205) to[bend right=12] node[above left, font=\tiny, align=right] {All Access Logs\\(\texttt{/var/log/ssle/*})} (wazuh.60);
-\draw[secedge] (wazuh.25) to[bend right=12] node[below right, font=\tiny, align=left] {Active Response: Cluster \texttt{firewall-drop}\\(\texttt{<location>all</location>})} (cluster.225);
+\draw[secedge] (ingest.210) to[bend right=15] node[above left=1pt, font=\tiny] {Access Logs} (wazuh.60);
+\draw[secedge] (wazuh.25) to[bend right=15] node[below right=1pt, font=\tiny] {Active Response: \texttt{firewall-drop}} (ingest.270);
 
 % ----------------- Connections: Exporters -----------------
-\draw[monedge] (diag.north west) -- node[above left=1pt, font=\tiny] {Runtime Diagnostics} (ingest.south east);
-\draw[monedge] (health.north west) -- node[above left=1pt, font=\tiny] {Poll /health} (storage.south east);
-\draw[monedge] (health.north east) -- node[above right=1pt, font=\tiny] {Poll /health} (analytics.south);
+\draw[monedge] (diag.north) -- node[right=2pt, font=\tiny] {Metrics (CPU/RPS)} (storage.south west);
+\draw[monedge] (health.north) -- node[right=2pt, font=\tiny] {Poll \texttt{/health}} (analytics.south);
 
 % ----------------- Connections: Prometheus Scraping -----------------
 \draw[monedge] (prom.north west) -- node[below left=1pt, font=\tiny] {Scrape :8001} (diag.south);
