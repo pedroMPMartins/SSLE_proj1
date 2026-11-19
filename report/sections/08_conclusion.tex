@@ -31,7 +31,7 @@ These identified limitations directly establish the roadmap for future work in a
 \begin{enumerate}
     \item \textbf{Byzantine Fault Tolerant (BFT) State Machine Replication:} Replace the single-node SQLite storage service with a distributed quorum-based state machine replication protocol (e.g., PBFT~\citep{castro2002practical} or Raft). This will eliminate the single point of failure and write lock saturation, allowing the telemetry cluster to maintain continuous availability and data consistency even when a subset of nodes are compromised by arbitrary Byzantine adversaries.
     \item \textbf{Decentralized Registry Clustering:} Implement peer-to-peer gossip protocols or distributed hash tables (DHT) across regional registries to ensure zero-downtime service discovery under network partitions.
-    \item \textbf{Asymmetric Mutual TLS (mTLS) with Hardware Roots of Trust:} Transition from symmetric HMAC keys to mutual TLS with automated short-lived certificate rotation (via Let's Encrypt / Vault) anchored in hardware TPM/secure elements at the edge.
+    \item \textbf{Mutual TLS (mTLS) with Hardware Roots of Trust:} Transition from symmetric HMAC keys to mutual TLS with automated short-lived certificate rotation (via Let's Encrypt / Vault) anchored in hardware TPM/secure elements at the edge.
 \end{enumerate}
 
 In conclusion, Project 1 demonstrates that combining hierarchical service discovery, multi-layered gateway hardening, real-time Prometheus observability, Wazuh SIEM active response, and closed-loop FCAPS correlation creates an observable, high-performance, and resilient foundation for large-scale distributed systems.
