@@ -1,6 +1,7 @@
 bin/
 temp_data.db
 certs/
+__pycache__/
 
 # Latex
 *.aux
