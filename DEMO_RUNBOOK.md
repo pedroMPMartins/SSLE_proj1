@@ -2,7 +2,7 @@
 
 **Course:** Security in Large Scale Systems (SSLE) — University of Aveiro  
 **Evaluation Scope:** Project 1 In-Class Live Evaluation & Demonstration  
-**Author:** Pedro (SSLE Student)  
+**Author:** Pedro Martins (NMec: 119916, SSLE Student)  
 **Environment:** Linux Incus Containers (Debian/Ubuntu), Kali VM, or Localhost  
 
 ---
