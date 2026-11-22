@@ -34,4 +34,10 @@ These identified limitations directly establish the roadmap for future work in a
     \item \textbf{Mutual TLS (mTLS) with Hardware Roots of Trust:} Transition from symmetric HMAC keys to mutual TLS with automated short-lived certificate rotation (via Let's Encrypt / Vault) anchored in hardware TPM/secure elements at the edge.
 \end{enumerate}
 
+\subsection{Artifact and Code Availability}
+All implementation artifacts, microservice source files, Incus container orchestration scripts, attack simulation utilities, and the automated CI regression suite are publicly accessible in the project repository:
+\begin{center}
+\url{https://github.com/pedroMPMartins/SSLE_proj1}
+\end{center}
+
 In conclusion, Project 1 demonstrates that combining hierarchical service discovery, multi-layered gateway hardening, real-time Prometheus observability, Wazuh SIEM active response, and closed-loop FCAPS correlation creates an observable, high-performance, and resilient foundation for large-scale distributed systems.
